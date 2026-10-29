@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: ecommerce-catalog
+  threads:
+    virtual:
+      enabled: true
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/catalog?replicaSet=rs0}
+      auto-index-creation: false
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+      timeout: 500ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+
+mongock:
+  migration-scan-package:
+    - com.ecommerce.shared.db
+    - com.ecommerce.category.internal
+    - com.ecommerce.product.internal
+  enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,modulith
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+app:
+  datasource:
+    mongodb-uri: ${MONGODB_URI:mongodb://localhost:27017/catalog?replicaSet=rs0}
+    redis-url: ${REDIS_URL:redis://localhost:6379}
+  jwt:
+    secret: ${JWT_SECRET:dev-secret-key-must-be-at-least-256-bits-long-for-hmac-sha-256}
+    expiration-seconds: 86400
+  cache:
+    default-ttl-seconds: 300
+    product-ttl-minutes: 10
+    category-tree-ttl-minutes: 30

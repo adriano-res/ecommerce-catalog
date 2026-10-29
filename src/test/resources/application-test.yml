@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: ecommerce-catalog-test
+  threads:
+    virtual:
+      enabled: true
+  data:
+    mongodb:
+      auto-index-creation: false
+  cache:
+    type: redis
+
+mongock:
+  enabled: false
+
+logging:
+  level:
+    root: INFO
+    com.ecommerce: DEBUG
+    org.springframework.data.mongodb.core.MongoTemplate: DEBUG
+
+app:
+  datasource:
+    mongodb-uri: ${spring.data.mongodb.uri:mongodb://localhost:27017/catalog_test}
+    redis-url: ${spring.data.redis.url:redis://localhost:6379}
+  jwt:
+    secret: test-secret-key-must-be-at-least-256-bits-long-for-hmac-sha-256
+    expiration-seconds: 3600
+  cache:
+    default-ttl-seconds: 60
+    product-ttl-minutes: 5
+    category-tree-ttl-minutes: 10

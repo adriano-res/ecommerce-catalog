@@ -1,0 +1,51 @@
+# Compiled class files
+*.class
+
+# Log files
+*.log
+logs/
+log/
+
+# Package Files / Binaries (never commit jars)
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Maven build output & wrapper
+target/
+.mvn/
+mvnw
+mvnw.cmd
+
+# Tooling and CLI
+.tool-versions.backup
+
+# IDEs and Editors
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+.springBeans
+.sts4-cache
+
+# Operating System files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Secrets & Local environment
+.env
+.env.*
+!.env.example
+
+# Local workflow & Kanban state
+.local/
