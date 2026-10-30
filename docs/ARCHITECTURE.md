@@ -9,20 +9,23 @@
 
 ## 1. Visão Geral e Princípios Arquiteturais
 
-O **E-commerce Catalog & Faceted Search Engine** é construído como um **Monolito Modular em Java 21** com **Spring Boot 3.5+** e **Spring Modulith**. O objetivo deste documento é definir rigorosamente o posicionamento físico dos arquivos no código, as responsabilidades de cada camada arquitetural (SRP) e as regras que garantem o desacoplamento e a consistência entre módulos.
+O **E-commerce Catalog & Faceted Search Engine** é construído como um **Monolito Modular em Java 21** com **Spring Boot 3.5+** e **Spring Modulith**. Este documento funciona como um **guia normativo de arquitetura**, orientando onde posicionar novos arquivos e componentes criados no projeto.
 
-### Princípios Norteadores
-1. **Fronteiras Estritas de Módulo (Package by Feature com Spring Modulith):** O código é particionado em módulos de domínio de primeiro nível (`category`, `product`, `search`). Classes internas residem obrigatoriamente no subpacote `internal/` e são inacessíveis para outros módulos, verificado por testes arquiteturais (`ApplicationModules.verify()`).
-2. **Propriedade Exclusiva de Dados (*Collection per Module*):** Cada coleção do MongoDB e namespace de chave do Redis pertence exclusivamente a um único módulo. Nenhum módulo executa queries, mutações ou leituras diretas em coleções de outro módulo.
-3. **Simetria e Uniformidade Arquitetural (POLA — Principle of Least Astonishment):** Todos os módulos seguem exatamente a mesma estrutura em camadas (`Controller` → `Service` → `Repository`), com nomes previsíveis para DTOs, mappers e documentos.
-4. **Isolamento de I/O e Inversão de Controle:** Repositórios realizam I/O puro no MongoDB; serviços orquestram regras e fronteiras de transação; facades públicas (`*Api`) isolam detalhes de implementação entre módulos.
-5. **MongoDB como Autoridade, Redis como Acelerador Efêmero:** O Redis funciona exclusivamente como camada de cache-aside. Se o Redis for reiniciado ou falhar, a aplicação degrada para leitura direta no MongoDB sem interrupção de serviço ou perda de dados.
+### Princípios Norteadores de Organização de Código
+1. **Convenção de Pacote por Feature (`com.ecommerce.<modulo>`):** O código é organizado por módulos funcionais de primeiro nível (`auth`, `category`, `product`, `search`).
+   - **Na raiz do pacote do módulo:** Vivem os componentes operacionais essenciais: `*Controller.java`, `*Service.java`, `*Repository.java`, `*Document.java`, `*Mapper.java`, `*Cache.java` e facades públicas.
+   - **No subpacote `dto/` (`com.ecommerce.<modulo>.dto`):** Ficam centralizados todos os records de transferência de dados de entrada e saída (`*Request.java`, `*Response.java`, queries e agrupamentos).
+2. **Centralização Transversal no `shared` (`com.ecommerce.shared`):** Qualquer componente, enum, modelo, configuração ou infraestrutura que seja utilizado por mais de um módulo deve residir obrigatoriamente sob o pacote `com.ecommerce.shared` (ex: `shared.enums`, `shared.security`, `shared.error`, `shared.audit`, `shared.money`, `shared.pagination`, `shared.config`).
+3. **Propriedade Exclusiva de Dados (*Collection per Module*):** Cada coleção do MongoDB e namespace de chave do Redis pertence exclusivamente a um único módulo. Nenhum módulo executa queries, mutações ou leituras diretas em coleções de outro módulo.
+4. **Simetria e Uniformidade Arquitetural (POLA — Principle of Least Astonishment):** Todos os módulos seguem a mesma convenção em camadas (`Controller` → `Service` → `Repository`), com nomes previsíveis para DTOs, mappers e documentos.
+5. **Isolamento de I/O e Inversão de Controle:** Repositórios realizam I/O puro no MongoDB; serviços orquestram regras e fronteiras de transação; comunicação síncrona entre módulos usa facades públicas (`*Api`) e comunicação assíncrona usa eventos de domínio (`*Changed`).
+6. **MongoDB como Autoridade, Redis como Acelerador Efêmero:** O Redis funciona exclusivamente como camada de cache-aside. Se o Redis falhar, a aplicação degrada suavemente para o MongoDB sem indisponibilidade ou perda de dados.
 
 ---
 
-## 2. Estrutura de Diretórios
+## 2. Estrutura de Diretórios e Guia de Posicionamento de Arquivos
 
-O projeto segue a estrutura padrão do Maven e as convenções do Spring Modulith:
+Ao criar novos arquivos no projeto, consulte a estrutura padronizada abaixo como referência de posicionamento:
 
 ```text
 ecommerce-catalog/
@@ -32,64 +35,70 @@ ecommerce-catalog/
 │   ├── SPECIFICATION.md                     # Requisitos, fluxos, diagramas e contratos
 │   └── TEMPLATE_TAREFA.md                   # Template para tarefas do kanban
 ├── docker-compose.yml                       # MongoDB 7 (rs0) + Redis 7
+├── .env.example                             # Variáveis de ambiente de referência
 ├── pom.xml                                  # Dependências (Spring Boot, Modulith, Testcontainers)
 └── src/
     ├── main/
     │   ├── java/com/ecommerce/
     │   │   ├── CatalogApplication.java     # Bootstrap (@SpringBootApplication + @Modulithic)
     │   │   │
-    │   │   ├── shared/                      # Módulo OPEN: utilitários transversais sem regra de negócio
+    │   │   ├── shared/                      # Módulo OPEN: Componentes reutilizados entre módulos
     │   │   │   ├── money/                   # Value Object imutável Money (cents em long + Currency)
     │   │   │   ├── error/                   # DomainException, FailureCode, ProblemDetailHandler (RFC 7807)
     │   │   │   ├── audit/                   # AuditMetadata (createdAt/By, updatedAt/By) e AuditorAware
     │   │   │   ├── pagination/              # CursorPage, CursorEncoder e decodificador Base64URL
-    │   │   │   └── config/                  # MongoConfig, RedisConfig, JacksonConfig
+    │   │   │   ├── enums/                   # Enums transversais compartilhados (ex: UserRole)
+    │   │   │   ├── security/                # Infraestrutura Spring Security (SecurityConfig, JwtService, JwtAuthenticationFilter)
+    │   │   │   └── config/                  # MongoConfig, RedisConfig, JacksonConfig, WebMvcConfig (prefixo global /api/v1)
     │   │   │
-    │   │   ├── category/                    # Domínio: Taxonomia e Definição de Atributos (US-01)
-    │   │   │   ├── CategoryApi.java         # Facade pública (interface consumida por outros módulos)
-    │   │   │   ├── CategoryView.java        # DTO público (record com dados da categoria)
-    │   │   │   ├── AttributeDefinition.java # Contrato público de atributos (record)
-    │   │   │   ├── CategoryChanged.java     # Evento de integração público (record)
-    │   │   │   └── internal/                # Implementação privada do módulo category
-    │   │   │       ├── CategoryController.java   # Transporte HTTP (/api/v1/categories)
-    │   │   │       ├── CategoryService.java      # Regras de negócio, ancestrais e cálculo de herança
-    │   │   │       ├── CategoryRepository.java   # Spring Data MongoRepository na coleção categories
-    │   │   │       ├── CategoryDocument.java     # Mapeamento @Document("categories") com audit
-    │   │   │       ├── CategoryMapper.java       # Funções puras de conversão DTO <-> Document
-    │   │   │       ├── CategoryCache.java        # Cache-aside Lettuce para cache:category-tree
-    │   │   │       ├── CategoryEventListener.java# @ApplicationModuleListener para evicção de cache
-    │   │   │       └── dto/                      # Records privados de request/response HTTP
-    │   │   │           ├── CreateCategoryRequest.java
-    │   │   │           └── CategoryTreeResponse.java
+    │   │   ├── auth/                        # Feature: Autenticação e tokens dev
+    │   │   │   ├── DevTokenController.java  # Controller na raiz do módulo
+    │   │   │   └── dto/                     # DTOs de request/response encapsulados
+    │   │   │       ├── DevTokenRequest.java
+    │   │   │       └── DevTokenResponse.java
     │   │   │
-    │   │   ├── product/                     # Domínio: Produtos e Ciclo de Vida (US-02, US-04)
-    │   │   │   ├── ProductApi.java          # Facade pública
-    │   │   │   ├── ProductSnapshot.java     # DTO público imutável (record)
-    │   │   │   ├── ProductChanged.java      # Evento de domínio público (record)
-    │   │   │   └── internal/                # Implementação privada do módulo product
-    │   │   │       ├── ProductController.java    # Transporte HTTP (/api/v1/products)
-    │   │   │       ├── ProductService.java       # Validação, publicação, concorrência @Version
-    │   │   │       ├── ProductRepository.java    # Spring Data MongoRepository na coleção products
-    │   │   │       ├── ProductDocument.java      # Mapeamento @Document("products") (Attribute Pattern)
-    │   │   │       ├── ProductMapper.java        # Mapeamento de atributos Map<String,Object> <-> List<AttributeValue>
-    │   │   │       ├── AttributeValidator.java   # Validador de tipos/enums contra CategoryApi
-    │   │   │       ├── ProductCache.java         # Cache-aside Lettuce para cache:product:{idOrSlug}
-    │   │   │       ├── ProductEventListener.java # @ApplicationModuleListener (invalidação reativa)
-    │   │   │       └── dto/                      # Records privados de request/response HTTP
-    │   │   │           ├── CreateProductRequest.java
-    │   │   │           ├── UpdateProductRequest.java
-    │   │   │           └── ProductResponse.java
+    │   │   ├── category/                    # Feature: Taxonomia e Definição de Atributos (US-01)
+    │   │   │   ├── CategoryController.java   # Controller na raiz do módulo
+    │   │   │   ├── CategoryService.java      # Service na raiz do módulo
+    │   │   │   ├── CategoryRepository.java   # Repository na raiz do módulo
+    │   │   │   ├── CategoryDocument.java     # Mapeamento @Document("categories") com audit
+    │   │   │   ├── CategoryMapper.java       # Funções puras de conversão DTO <-> Document
+    │   │   │   ├── CategoryCache.java        # Cache-aside Lettuce para cache:category-tree
+    │   │   │   ├── CategoryEventListener.java# Listener para evicção reativa de cache
+    │   │   │   ├── CategoryApi.java          # Facade pública para chamadas entre módulos
+    │   │   │   ├── CategoryChanged.java      # Evento de integração público
+    │   │   │   └── dto/                      # DTOs de request/response encapsulados
+    │   │   │       ├── CreateCategoryRequest.java
+    │   │   │       ├── CategoryResponse.java
+    │   │   │       ├── CategoryTreeResponse.java
+    │   │   │       └── AttributeDefinition.java
     │   │   │
-    │   │   └── search/                      # Domínio: Motor de Busca Facetada (US-03)
-    │   │       ├── SearchApi.java           # Facade pública
-    │   │       └── internal/                # Implementação privada do módulo search
-    │   │           ├── SearchController.java     # Transporte HTTP (/api/v1/products/search)
-    │   │           ├── SearchService.java        # Parsing de filtros dinâmicos attr.* e ordenação
-    │   │           ├── ProductSearchRepository.java # Aggregation Pipeline com $match e $facet
-    │   │           └── dto/                      # Records de busca e agrupamentos de facetas
-    │   │               ├── SearchQuery.java
-    │   │               ├── SearchResult.java
-    │   │               └── FacetGroup.java
+    │   │   ├── product/                     # Feature: Produtos e Ciclo de Vida (US-02, US-04)
+    │   │   │   ├── ProductController.java    # Controller na raiz do módulo
+    │   │   │   ├── ProductService.java       # Service na raiz do módulo
+    │   │   │   ├── ProductRepository.java    # Repository na raiz do módulo
+    │   │   │   ├── ProductDocument.java      # Mapeamento @Document("products") (Attribute Pattern)
+    │   │   │   ├── ProductMapper.java        # Mapeamento DTO <-> Document
+    │   │   │   ├── ProductCache.java         # Cache-aside Lettuce para cache:product:{idOrSlug}
+    │   │   │   ├── ProductEventListener.java # Listener para evicção reativa de cache
+    │   │   │   ├── AttributeValidator.java   # Validador de tipos/enums contra CategoryApi
+    │   │   │   ├── ProductApi.java           # Facade pública para outros módulos
+    │   │   │   ├── ProductChanged.java       # Evento de domínio público
+    │   │   │   └── dto/                      # DTOs de request/response encapsulados
+    │   │   │       ├── CreateProductRequest.java
+    │   │   │       ├── UpdateProductRequest.java
+    │   │   │       ├── ProductResponse.java
+    │   │   │       └── ProductSnapshot.java
+    │   │   │
+    │   │   └── search/                      # Feature: Motor de Busca Facetada (US-03)
+    │   │       ├── SearchController.java     # Controller na raiz do módulo
+    │   │       ├── SearchService.java        # Service de busca na raiz do módulo
+    │   │       ├── ProductSearchRepository.java # Aggregation Pipeline com $match e $facet
+    │   │       ├── SearchApi.java            # Facade pública de busca
+    │   │       └── dto/                      # DTOs de query e agregação encapsulados
+    │   │           ├── SearchQuery.java
+    │   │           ├── SearchResult.java
+    │   │           └── FacetGroup.java
     │   │
     │   └── resources/
     │       ├── application.yml              # Configurações gerais e fail-fast
@@ -98,14 +107,22 @@ ecommerce-catalog/
     │
     └── test/java/com/ecommerce/
         ├── ModularityTests.java             # Validação estrita de fronteiras com Spring Modulith
-        ├── category/                        # Testes de integração de Category (@ApplicationModuleTest)
+        ├── shared/                          # Testes unitários do kernel compartilhado
+        │   ├── money/                       # MoneyTest
+        │   ├── error/                       # ProblemDetailHandlerTest
+        │   ├── audit/                       # AuditorAwareTest
+        │   ├── pagination/                  # CursorEncoderTest
+        │   └── security/                    # JwtServiceTest, SecurityFilterChainTest
+        ├── auth/                            # Testes da feature de autenticação
+        │   └── DevTokenControllerTest.java  # DevTokenControllerTest (MockMvc)
+        ├── category/                        # Testes da feature de Category
         │   ├── CategoryServiceIT.java
         │   └── CategoryCacheIT.java
-        ├── product/                         # Testes de integração de Product (@ApplicationModuleTest)
+        ├── product/                         # Testes da feature de Product
         │   ├── ProductServiceIT.java
         │   ├── AttributeValidatorTest.java
         │   └── ProductCacheIT.java
-        ├── search/                          # Testes de integração de Search (@ApplicationModuleTest)
+        ├── search/                          # Testes da feature de Search
         │   └── ProductSearchRepositoryIT.java
         └── support/                         # Suporte compartilhado (MongoDB e Redis Testcontainers)
             ├── AbstractIntegrationTest.java
@@ -160,7 +177,7 @@ flowchart TD
   - Publicar eventos de domínio via `ApplicationEventPublisher`.
   - Aplicar tratamento de concorrência otimista capturando `OptimisticLockingFailureException`.
 - **Proibições:**
-  - Nunca chamar classes dentro do subpacote `internal/` de outros módulos.
+  - Nunca chamar repositórios ou componentes internos de outros módulos diretamente (a comunicação síncrona deve ocorrer via facade `*Api` e a assíncrona via eventos `*Changed`).
   - Nunca conter código de formatação HTTP ou serialização JSON.
 
 ### 3.3. Facades Públicas (`*Api.java`)
@@ -207,6 +224,7 @@ Para garantir a regra de ouro de fronteiras de dados (*Collection per Module*):
 
 | Domínio / Módulo | Coleção MongoDB | Chaves Redis | Responsabilidade Exclusiva |
 | :--- | :--- | :--- | :--- |
+| `auth` | — *(stateless)* | — | Emissão de tokens JWT para ambiente de desenvolvimento (`/api/v1/auth/dev-token`). |
 | `category` | `categories` | `cache:category-tree` | Estrutura hierárquica, slugs e catálogo de definições de atributos. |
 | `product` | `products` | `cache:product:{idOrSlug}` | Cadastro de produtos, ciclo de vida, Attribute Pattern e locking otimista. |
 | `search` | *(somente leitura via Aggregation)* | — | Motor de busca facetada, paginação por cursor e projeções de busca. |

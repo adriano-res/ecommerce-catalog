@@ -1,18 +1,15 @@
 package com.ecommerce.shared.error;
 
 import jakarta.servlet.http.HttpServletRequest;
-import java.net.URI;
-import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -22,15 +19,12 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class ProblemDetailHandler {
 
   private static final Logger log = LoggerFactory.getLogger(ProblemDetailHandler.class);
-  private static final String ERROR_TYPE_PREFIX = "https://api.ecommerce.example.com/errors/";
-  private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
-  private static final String MDC_CORRELATION_ID = "correlationId";
 
   @ExceptionHandler(DomainException.class)
   public ResponseEntity<ProblemDetail> handleDomainException(
       DomainException ex, HttpServletRequest request) {
     HttpStatus status = ex.getFailureCode().getHttpStatus();
-    ProblemDetail problem = buildProblemDetail(
+    ProblemDetail problem = ProblemDetails.build(
         status,
         ex.getFailureCode(),
         ex.getMessage(),
@@ -47,15 +41,18 @@ public class ProblemDetailHandler {
       MethodArgumentNotValidException ex, HttpServletRequest request) {
     HttpStatus status = HttpStatus.BAD_REQUEST;
     FailureCode failureCode = FailureCode.VALIDATION_ERROR;
-    ProblemDetail problem = buildProblemDetail(
+    ProblemDetail problem = ProblemDetails.build(
         status,
         failureCode,
         "Validation failed for one or more fields",
         request);
 
-    List<InvalidParam> invalidParams = ex.getBindingResult().getFieldErrors().stream()
-        .map(fieldError -> new InvalidParam(fieldError.getField(), fieldError.getDefaultMessage()))
-        .toList();
+    List<InvalidParam> invalidParams = new ArrayList<>();
+    ex.getBindingResult().getFieldErrors().forEach(
+        fieldError -> invalidParams.add(new InvalidParam(fieldError.getField(), fieldError.getDefaultMessage())));
+    ex.getBindingResult().getGlobalErrors().forEach(
+        globalError -> invalidParams.add(new InvalidParam(globalError.getObjectName(), globalError.getDefaultMessage())));
+
     problem.setProperty("invalidParams", invalidParams);
 
     log.warn("Validation error: {}", invalidParams);
@@ -67,7 +64,7 @@ public class ProblemDetailHandler {
       OptimisticLockingFailureException ex, HttpServletRequest request) {
     HttpStatus status = HttpStatus.CONFLICT;
     FailureCode failureCode = FailureCode.CONCURRENT_MODIFICATION;
-    ProblemDetail problem = buildProblemDetail(
+    ProblemDetail problem = ProblemDetails.build(
         status,
         failureCode,
         "Resource was modified by another transaction. Please reload and retry.",
@@ -81,7 +78,7 @@ public class ProblemDetailHandler {
       IllegalArgumentException ex, HttpServletRequest request) {
     HttpStatus status = HttpStatus.BAD_REQUEST;
     FailureCode failureCode = FailureCode.VALIDATION_ERROR;
-    ProblemDetail problem = buildProblemDetail(
+    ProblemDetail problem = ProblemDetails.build(
         status,
         failureCode,
         ex.getMessage(),
@@ -95,7 +92,7 @@ public class ProblemDetailHandler {
       NoResourceFoundException ex, HttpServletRequest request) {
     HttpStatus status = HttpStatus.NOT_FOUND;
     FailureCode failureCode = FailureCode.RESOURCE_NOT_FOUND;
-    ProblemDetail problem = buildProblemDetail(
+    ProblemDetail problem = ProblemDetails.build(
         status,
         failureCode,
         ex.getMessage(),
@@ -104,46 +101,32 @@ public class ProblemDetailHandler {
     return ResponseEntity.status(status).body(problem);
   }
 
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  public ResponseEntity<ProblemDetail> handleMethodNotSupported(
+      HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+    HttpStatus status = HttpStatus.METHOD_NOT_ALLOWED;
+    FailureCode failureCode = FailureCode.METHOD_NOT_ALLOWED;
+    ProblemDetail problem = ProblemDetails.build(
+        status,
+        failureCode,
+        ex.getMessage(),
+        request);
+    log.warn("HTTP method not supported: {}", ex.getMessage());
+    return ResponseEntity.status(status).body(problem);
+  }
+
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ProblemDetail> handleUnhandled(
       Exception ex, HttpServletRequest request) {
     HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
     FailureCode failureCode = FailureCode.INTERNAL_ERROR;
-    ProblemDetail problem = buildProblemDetail(
+    ProblemDetail problem = ProblemDetails.build(
         status,
         failureCode,
         "An unexpected error occurred. Please contact support with correlationId.",
         request);
     log.error("Unhandled error: ", ex);
     return ResponseEntity.status(status).body(problem);
-  }
-
-  private ProblemDetail buildProblemDetail(
-      HttpStatus status,
-      FailureCode failureCode,
-      String detail,
-      HttpServletRequest request) {
-    ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-    problem.setType(URI.create(ERROR_TYPE_PREFIX + failureCode.name()));
-    problem.setTitle(status.getReasonPhrase());
-    problem.setInstance(URI.create(request.getRequestURI()));
-
-    String correlationId = resolveCorrelationId(request);
-    problem.setProperty("failureCode", failureCode.name());
-    problem.setProperty("timestamp", Instant.now().toString());
-    problem.setProperty("correlationId", correlationId);
-    return problem;
-  }
-
-  private String resolveCorrelationId(HttpServletRequest request) {
-    String correlationId = MDC.get(MDC_CORRELATION_ID);
-    if (correlationId == null || correlationId.isBlank()) {
-      correlationId = request.getHeader(CORRELATION_ID_HEADER);
-    }
-    if (correlationId == null || correlationId.isBlank()) {
-      correlationId = UUID.randomUUID().toString();
-    }
-    return correlationId;
   }
 
   public record InvalidParam(String name, String reason) {}
