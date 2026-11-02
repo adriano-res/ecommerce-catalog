@@ -15,11 +15,12 @@ O **E-commerce Catalog & Faceted Search Engine** é construído como um **Monoli
 1. **Convenção de Pacote por Feature (`com.ecommerce.<modulo>`):** O código é organizado por módulos funcionais de primeiro nível (`auth`, `category`, `product`, `search`).
    - **Na raiz do pacote do módulo:** Vivem os componentes operacionais essenciais: `*Controller.java`, `*Service.java`, `*Repository.java`, `*Document.java`, `*Mapper.java`, `*Cache.java` e facades públicas.
    - **No subpacote `dto/` (`com.ecommerce.<modulo>.dto`):** Ficam centralizados todos os records de transferência de dados de entrada e saída (`*Request.java`, `*Response.java`, queries e agrupamentos).
-2. **Centralização Transversal no `shared` (`com.ecommerce.shared`):** Qualquer componente, enum, modelo, configuração ou infraestrutura que seja utilizado por mais de um módulo deve residir obrigatoriamente sob o pacote `com.ecommerce.shared` (ex: `shared.enums`, `shared.security`, `shared.error`, `shared.audit`, `shared.money`, `shared.pagination`, `shared.config`).
+2. **Centralização Transversal no `shared` (`com.ecommerce.shared`):** Qualquer componente, enum, modelo, configuração ou infraestrutura que seja utilizado por mais de um módulo deve residir obrigatoriamente sob o pacote `com.ecommerce.shared` (ex: `shared.enums`, `shared.security`, `shared.error`, `shared.audit`, `shared.money`, `shared.pagination`, `shared.config`, `shared.db.migrations`).
 3. **Propriedade Exclusiva de Dados (*Collection per Module*):** Cada coleção do MongoDB e namespace de chave do Redis pertence exclusivamente a um único módulo. Nenhum módulo executa queries, mutações ou leituras diretas em coleções de outro módulo.
 4. **Simetria e Uniformidade Arquitetural (POLA — Principle of Least Astonishment):** Todos os módulos seguem a mesma convenção em camadas (`Controller` → `Service` → `Repository`), com nomes previsíveis para DTOs, mappers e documentos.
 5. **Isolamento de I/O e Inversão de Controle:** Repositórios realizam I/O puro no MongoDB; serviços orquestram regras e fronteiras de transação; comunicação síncrona entre módulos usa facades públicas (`*Api`) e comunicação assíncrona usa eventos de domínio (`*Changed`).
 6. **MongoDB como Autoridade, Redis como Acelerador Efêmero:** O Redis funciona exclusivamente como camada de cache-aside. Se o Redis falhar, a aplicação degrada suavemente para o MongoDB sem indisponibilidade ou perda de dados.
+7. **Centralização Estrita de Migrações de Banco (Mongock):** Todas as migrações DDL e criação de índices MongoDB devem residir exclusivamente em `com.ecommerce.shared.db.migrations`. Módulos de feature (`category`, `product`, `search`) são estritamente proibidos de conter classes de migração para evitar fragmentação do histórico do banco de dados.
 
 ---
 
@@ -49,7 +50,10 @@ ecommerce-catalog/
     │   │   │   ├── pagination/              # CursorPage, CursorEncoder e decodificador Base64URL
     │   │   │   ├── enums/                   # Enums transversais compartilhados (ex: UserRole)
     │   │   │   ├── security/                # Infraestrutura Spring Security (SecurityConfig, JwtService, JwtAuthenticationFilter)
-    │   │   │   └── config/                  # MongoConfig, RedisConfig, JacksonConfig, WebMvcConfig (prefixo global /api/v1)
+    │   │   │   ├── config/                  # MongoConfig, RedisConfig, JacksonConfig, WebMvcConfig (prefixo global /api/v1)
+    │   │   │   ├── cache/                   # CacheService resiliente (get, put com TTL, evict)
+    │   │   │   └── db/                      # Infraestrutura de banco e migrações versionadas
+    │   │   │       └── migrations/          # ChangeUnits sequenciais do Mongock (V001_..., V002_...)
     │   │   │
     │   │   ├── auth/                        # Feature: Autenticação e tokens dev
     │   │   │   ├── DevTokenController.java  # Controller na raiz do módulo
@@ -59,14 +63,10 @@ ecommerce-catalog/
     │   │   │
     │   │   ├── category/                    # Feature: Taxonomia e Definição de Atributos (US-01)
     │   │   │   ├── CategoryController.java   # Controller na raiz do módulo
-    │   │   │   ├── CategoryService.java      # Service na raiz do módulo
+    │   │   │   ├── CategoryService.java      # Service na raiz do módulo (regras de negócio, cache e consultas)
     │   │   │   ├── CategoryRepository.java   # Repository na raiz do módulo
     │   │   │   ├── CategoryDocument.java     # Mapeamento @Document("categories") com audit
     │   │   │   ├── CategoryMapper.java       # Funções puras de conversão DTO <-> Document
-    │   │   │   ├── CategoryCache.java        # Cache-aside Lettuce para cache:category-tree
-    │   │   │   ├── CategoryEventListener.java# Listener para evicção reativa de cache
-    │   │   │   ├── CategoryApi.java          # Facade pública para chamadas entre módulos
-    │   │   │   ├── CategoryChanged.java      # Evento de integração público
     │   │   │   └── dto/                      # DTOs de request/response encapsulados
     │   │   │       ├── CreateCategoryRequest.java
     │   │   │       ├── CategoryResponse.java
@@ -79,9 +79,8 @@ ecommerce-catalog/
     │   │   │   ├── ProductRepository.java    # Repository na raiz do módulo
     │   │   │   ├── ProductDocument.java      # Mapeamento @Document("products") (Attribute Pattern)
     │   │   │   ├── ProductMapper.java        # Mapeamento DTO <-> Document
-    │   │   │   ├── ProductCache.java         # Cache-aside Lettuce para cache:product:{idOrSlug}
-    │   │   │   ├── ProductEventListener.java # Listener para evicção reativa de cache
-    │   │   │   ├── AttributeValidator.java   # Validador de tipos/enums contra CategoryApi
+    │   │   │   ├── ProductEventListener.java # Listener para evicção reativa de cache via CacheService
+    │   │   │   ├── AttributeValidator.java   # Validador de tipos/enums contra CategoryService
     │   │   │   ├── ProductApi.java           # Facade pública para outros módulos
     │   │   │   ├── ProductChanged.java       # Evento de domínio público
     │   │   │   └── dto/                      # DTOs de request/response encapsulados
@@ -256,7 +255,7 @@ public record AttributeValue(
 O módulo `category` implementa o padrão *Ancestors Path*:
 - Ao criar uma categoria com `parentId`, o `CategoryService` recupera os ancestrais do pai e concatena o ID do pai, gravando:
   `ancestors: [rootId, subcategoryParentId]`.
-- Ao cadastrar um produto, o `ProductService` busca os ancestrais da categoria via `CategoryApi` e preenche `categoryPath`:
+- Ao cadastrar um produto, o `ProductService` busca os ancestrais da categoria via `CategoryService` e preenche `categoryPath`:
   `categoryPath: [rootId, subcategoryParentId, categoryId]`.
 - **Benefício:** Uma query por produtos da categoria pai usa o índice composto `{ "status": 1, "categoryPath": 1 }`, encontrando produtos de todas as subcategorias filhas instantaneamente.
 
@@ -267,3 +266,14 @@ O módulo `category` implementa o padrão *Ancestors Path*:
 - A classe `ProductDocument` declara um atributo `private Long version;` anotado com `@Version`.
 - Em atualizações (`PATCH /api/v1/products/{id}`), o cliente HTTP deve enviar o cabeçalho `If-Match: <versao>`.
 - Se outro usuário tiver atualizado o produto entre a leitura e a escrita, o Spring Data lança `OptimisticLockingFailureException`. O `ProblemDetailHandler` intercepta e retorna `409 Conflict` com código `CONCURRENT_MODIFICATION`, prevenindo sobrescritas silenciosas.
+
+---
+
+### 4.5. Migrações e Versionamento de Banco de Dados (Mongock)
+
+Para garantir integridade de esquema em produção e cumprir a regra **RNF-04** (`auto-index-creation = false`):
+
+- **Localização Única:** Todas as classes de migração e criação de índices devem residir exclusivamente no pacote centralizado `com.ecommerce.shared.db.migrations`.
+- **Proibição de Migrações em Features:** Nenhuma classe `@ChangeUnit` pode ser criada dentro dos pacotes de módulos de negócio (`category`, `product`, `search`, etc.). Isso evita fragmentação do histórico e mantém a ordem cronológica em um ponto único de auditoria.
+- **Convenção de Nomenclatura:** `V{NNN}_{DescricaoEmCamelCase}.java` (ex: `V001_CreateCategoryIndexes.java`, `V002_CreateProductIndexes.java`).
+- **Configuração do Mongock:** A propriedade `mongock.migration-scan-package` no `application.yml` aponta unicamente para `com.ecommerce.shared.db.migrations`.

@@ -23,9 +23,7 @@ server:
 
 mongock:
   migration-scan-package:
-    - com.ecommerce.shared.db
-    - com.ecommerce.category.internal
-    - com.ecommerce.product.internal
+    - com.ecommerce.shared.db.migrations
   enabled: true
 
 management:

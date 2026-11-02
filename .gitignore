@@ -49,3 +49,4 @@ ehthumbs.db
 
 # Local workflow & Kanban state
 .local/
+.agents/

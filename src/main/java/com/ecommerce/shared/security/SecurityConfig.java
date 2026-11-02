@@ -3,7 +3,6 @@ package com.ecommerce.shared.security;
 import com.ecommerce.shared.error.FailureCode;
 import com.ecommerce.shared.error.ProblemDetails;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.springframework.context.annotation.Bean;
@@ -57,12 +56,10 @@ public class SecurityConfig {
             .requestMatchers(HttpMethod.PATCH, "/api/v1/products", "/api/v1/products/**").hasRole("ADMIN")
             .requestMatchers(HttpMethod.DELETE, "/api/v1/products", "/api/v1/products/**").hasRole("ADMIN")
 
-            .anyRequest().authenticated()
-        )
+            .anyRequest().authenticated())
         .exceptionHandling(exceptions -> exceptions
             .authenticationEntryPoint(authenticationEntryPoint())
-            .accessDeniedHandler(accessDeniedHandler())
-        )
+            .accessDeniedHandler(accessDeniedHandler()))
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
         .build();
   }

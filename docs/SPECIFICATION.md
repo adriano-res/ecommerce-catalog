@@ -34,7 +34,7 @@ O foco de engenharia é resolver os desafios clássicos de dados e busca de cat�
   - **Dado** que uma categoria define `attributeDefinitions` (cada uma contendo `key`, `label`, `type` [`ENUM`, `NUMBER`, `STRING`, `BOOLEAN`], `unit`, `required`, `filterable` e `allowedValues`), **Quando** consultada, **Então** o sistema deve retornar as definições efetivas resultantes da união da cadeia de ancestrais com as regras locais.
   - **Dado** uma tentativa de subcategoria redefinir uma `key` de atributo já existente em um de seus ancestrais, **Então** a requisição deve ser rejeitada com `422 INVALID_ATTRIBUTE_DEFINITION`.
   - **Dado** uma categoria que possui subcategorias filhas ou produtos associados, **Quando** for solicitado `DELETE /api/v1/categories/{id}`, **Então** a API deve rejeitar a exclusão com `409 CATEGORY_NOT_EMPTY`.
-  - **Dado** `GET /api/v1/categories/tree`, **Quando** executado, **Então** deve retornar a árvore completa com cache no Redis (`cache:category-tree`, TTL de 30 minutos), invalidado após qualquer criação, alteração ou exclusão de categoria (`CategoryChanged`).
+  - **Dado** `GET /api/v1/categories/tree`, **Quando** executado, **Então** deve retornar a árvore completa com cache no Redis (`cache:category-tree`, TTL de 30 minutos), invalidado diretamente via `CacheService` após qualquer criação ou exclusão de categoria.
 
 ---
 
@@ -113,7 +113,7 @@ O foco de engenharia é resolver os desafios clássicos de dados e busca de cat�
 | **RF-04** | O sistema deve gerenciar o ciclo de vida do produto (`DRAFT` → `ACTIVE` → `ARCHIVED`) com controle de concorrência otimista via `@Version`. | Alta |
 | **RF-05** | O sistema deve executar busca de produtos com filtros combinados (texto, categoria hierárquica, faixa de preço e atributos dinâmicos), retornando produtos e contagens por filtro em pipeline único (`$facet`). | Alta |
 | **RF-06** | O sistema deve fornecer paginação estável por cursor opaco Base64URL em listagens e buscas. | Alta |
-| **RF-07** | O sistema deve implementar padrão Cache-Aside no Redis para produtos e taxonomia com invalidação cirúrgica orientada a eventos (`ProductChanged`, `CategoryChanged`). | Alta |
+| **RF-07** | O sistema deve implementar padrão Cache-Aside no Redis para produtos e taxonomia com invalidação cirúrgica (via evento `ProductChanged` para produtos e evicção direta via `CacheService` para categorias). | Alta |
 | **RF-08** | O sistema deve garantir fallback automático e transparente para o MongoDB caso o Redis fique indisponível. | Média |
 
 ### 3.2 Requisitos Não-Funcionais (RNF)

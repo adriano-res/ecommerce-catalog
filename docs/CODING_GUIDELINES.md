@@ -58,7 +58,7 @@ Para visão estrutural, fluxos de agregação e arquitetura de módulos, consult
 * **Tipos Permitidos na API Pública:** Facades públicas (`*Api`), DTOs `record` e eventos de domínio (`*Changed`). É terminantemente proibido expor classes `@Document`, repositórios ou serviços internos.
 * **Isolamento de Persistência:** Um módulo **nunca** injeta repositórios, executa queries ou lê coleções/chaves gerenciadas por outro módulo. Toda interação é feita através da facade pública ou de eventos.
 * **Eventos de Domínio:**
-  * Nomeados no particípio passado (`ProductChanged`, `CategoryChanged`) como `record` imutável.
+  * Nomeados no particípio passado (`ProductChanged`) como `record` imutável.
   * Publicados via `ApplicationEventPublisher` e consumidos com `@ApplicationModuleListener` (assíncrono, após commit da transação do Spring Modulith).
   * Listeners devem ser **idempotentes**, pois o registry de eventos pode reentregar mensagens em caso de retry.
 * **Módulo `shared`:** Marcado como `@ApplicationModule(type = Type.OPEN)`. Contém apenas utilitários transversais sem regra de negócio e nunca depende de módulos de domínio.
@@ -73,7 +73,7 @@ Para visão estrutural, fluxos de agregação e arquitetura de módulos, consult
 | **Classes / Records** | `PascalCase` com sufixo do papel arquitetural | `ProductService`, `ProductRepository`, `ProductDocument`, `ProductController` |
 | **Facades Públicas** | `<Module>Api` | `CategoryApi`, `ProductApi`, `SearchApi` |
 | **DTOs HTTP** | `<Action><Entity>Request` / `<Entity>Response` | `CreateProductRequest`, `ProductResponse` |
-| **Eventos de Domínio** | Substantivo + Verbo no Passado | `ProductChanged`, `CategoryChanged` |
+| **Eventos de Domínio** | Substantivo + Verbo no Passado | `ProductChanged` |
 | **Coleções MongoDB** | `snake_case` no plural | `categories`, `products` |
 | **Campos de Documento** | `camelCase` | `categoryPath`, `amountMinor`, `attributeDefinitions` |
 | **Chaves no Redis** | `cache:<namespace>:<identificador>` | `cache:product:{idOrSlug}`, `cache:category-tree` |
@@ -85,7 +85,7 @@ Para visão estrutural, fluxos de agregação e arquitetura de módulos, consult
 ## 5. Diretrizes de MongoDB e Migrations
 
 * **Validação de Esquema e Índices via Mongock:**
-  * Toda definição de índice ou validador `$jsonSchema` reside exclusivamente em classes `@ChangeUnit` versionadas numericamente (`V001_CreateCategoryIndexes`, `V002_CreateProductIndexes`).
+  * Toda definição de índice ou validador `$jsonSchema` reside exclusivamente no pacote `com.ecommerce.shared.db.migrations` em classes `@ChangeUnit` versionadas numericamente (`V001_CreateCategoryIndexes`, `V002_CreateProductIndexes`). É proibido colocar migrações dentro dos pacotes de feature (`category`, `product`, etc.).
   * **Imutabilidade Absoluta:** É expressamente proibido alterar `@ChangeUnit` já comitados. Novas necessidades de índice ou schema exigem um novo ChangeUnit incremental.
   * A propriedade `spring.data.mongodb.auto-index-creation` deve permanecer `false`.
 * **Attribute Pattern para Atributos Heterogêneos:**
@@ -108,7 +108,7 @@ Para visão estrutural, fluxos de agregação e arquitetura de módulos, consult
 * **Resiliência e Fallback Transparente:**
   * Falhas de rede ou timeout com o Redis não devem interromper o serviço. O componente de cache captura exceções de conexão, loga em nível `WARN`, incrementa métricas operacionais e cai diretamente para o MongoDB.
 * **Invalidação Reativa:**
-  * Listeners de eventos de domínio (`ProductChanged`, `CategoryChanged`) executam o `DEL` das chaves afetadas logo após o commit da transação.
+  * No módulo `product`, listeners de eventos de domínio (`ProductChanged`) executam o `DEL` das chaves afetadas logo após o commit da transação. No módulo `category`, a evicção de `cache:category-tree` é acionada diretamente pelo `CategoryService` via `CacheService`.
 
 ---
 
