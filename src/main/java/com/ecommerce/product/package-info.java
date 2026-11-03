@@ -1,4 +1,4 @@
 @org.springframework.modulith.ApplicationModule(
-    allowedDependencies = {"shared", "category"}
+    allowedDependencies = {"shared", "category", "outbox"}
 )
 package com.ecommerce.product;

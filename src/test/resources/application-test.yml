@@ -30,3 +30,13 @@ app:
     default-ttl-seconds: 60
     product-ttl-minutes: 5
     category-tree-ttl-minutes: 10
+  storage:
+    s3:
+      endpoint: ${S3_ENDPOINT:http://localhost:8333}
+      bucket: ecommerce-catalog-test
+      access-key: test-access-key
+      secret-key: test-secret-key
+      region: us-east-1
+      max-size-bytes: 5242880
+  outbox:
+    interval-ms: 5000

@@ -62,6 +62,18 @@ services:
     volumes:
       - redis_data:/data
 
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: catalog-seaweedfs
+    restart: unless-stopped
+    command: "server -s3 -dir=/data -s3.port=8333"
+    ports:
+      - "8333:8333"
+      - "9333:9333"
+    volumes:
+      - seaweedfs_data:/data
+
 volumes:
   mongodb_data:
   redis_data:
+  seaweedfs_data:

@@ -400,7 +400,7 @@ erDiagram
     { "k": "is5g", "v": true }
   ],
   "images": [
-    { "url": "https://cdn.loja.com/gx24-front.jpg", "alt": "Visão frontal" }
+    { "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "url": "https://cdn.loja.com/gx24-front.jpg", "alt": "Visão frontal" }
   ],
   "version": 1,
   "audit": {
