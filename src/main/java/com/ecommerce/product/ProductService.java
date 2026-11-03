@@ -2,15 +2,20 @@ package com.ecommerce.product;
 
 import com.ecommerce.category.CategoryService;
 import com.ecommerce.category.dto.AttributeDefinition;
+import com.ecommerce.category.dto.CategoryView;
 import com.ecommerce.product.dto.CreateProductRequest;
 import com.ecommerce.product.dto.ProductResponse;
+import com.ecommerce.product.dto.ProductSearchResult;
 import com.ecommerce.product.dto.ProductSnapshot;
+import com.ecommerce.product.dto.SearchFilterRequest;
 import com.ecommerce.product.dto.UpdateProductRequest;
 import com.ecommerce.product.entity.AttributeValue;
 import com.ecommerce.product.entity.ProductDocument;
 import com.ecommerce.product.entity.ProductImage;
 import com.ecommerce.product.entity.ProductStatus;
 import com.ecommerce.product.mapper.ProductMapper;
+import com.ecommerce.product.repository.ProductRepository;
+import com.ecommerce.product.repository.ProductSearchRepository;
 import com.ecommerce.product.validation.AttributeValidator;
 import com.ecommerce.product.validation.ImageValidator;
 import com.ecommerce.outbox.OutboxApi;
@@ -41,6 +46,7 @@ public class ProductService implements ProductApi {
   private static final Logger log = LoggerFactory.getLogger(ProductService.class);
 
   private final ProductRepository productRepository;
+  private final ProductSearchRepository productSearchRepository;
   private final CategoryService categoryService;
   private final AttributeValidator attributeValidator;
   private final AuditorAware<String> auditorAware;
@@ -50,6 +56,7 @@ public class ProductService implements ProductApi {
 
   public ProductService(
       ProductRepository productRepository,
+      ProductSearchRepository productSearchRepository,
       CategoryService categoryService,
       AttributeValidator attributeValidator,
       AuditorAware<String> auditorAware,
@@ -57,6 +64,7 @@ public class ProductService implements ProductApi {
       ImageValidator imageValidator,
       OutboxApi outboxApi) {
     this.productRepository = productRepository;
+    this.productSearchRepository = productSearchRepository;
     this.categoryService = categoryService;
     this.attributeValidator = attributeValidator;
     this.auditorAware = auditorAware;
@@ -396,5 +404,21 @@ public class ProductService implements ProductApi {
   @Override
   public long countByStatus(ProductStatus status) {
     return productRepository.countByStatus(status);
+  }
+
+  @Override
+  public ProductSearchResult search(SearchFilterRequest request) {
+    if (request == null) {
+      return ProductSearchResult.empty();
+    }
+    String categoryId = null;
+    if (request.category() != null && !request.category().isBlank()) {
+      Optional<CategoryView> categoryView = categoryService.findBySlug(request.category().trim());
+      if (categoryView.isEmpty()) {
+        return ProductSearchResult.empty();
+      }
+      categoryId = categoryView.get().id();
+    }
+    return productSearchRepository.search(request, categoryId);
   }
 }

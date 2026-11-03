@@ -12,12 +12,13 @@
 O **E-commerce Catalog & Faceted Search Engine** é construído como um **Monolito Modular em Java 21** com **Spring Boot 3.5+** e **Spring Modulith**. Este documento funciona como um **guia normativo de arquitetura**, orientando onde posicionar novos arquivos e componentes criados no projeto.
 
 ### Princípios Norteadores de Organização de Código
-1. **Convenção de Pacote por Feature (`com.ecommerce.<modulo>`):** O código é organizado por módulos funcionais de primeiro nível (`auth`, `category`, `product`, `search`) mantendo a raiz do pacote limpa e focada na espinha dorsal operacional:
-   - **Na raiz do pacote do módulo:** Vivem unicamente a tríade operacional essencial e a facade pública:
+1. **Convenção de Pacote por Feature (`com.ecommerce.<modulo>`):** O código é organizado por módulos funcionais de primeiro nível (`auth`, `category`, `product`, `outbox`) mantendo a raiz do pacote limpa e focada na espinha dorsal operacional:
+   - **Na raiz do pacote do módulo:** Vivem unicamente a espinha dorsal operacional essencial e a facade pública:
      - `*Controller.java` (Entrada e adaptação de transporte HTTP REST)
      - `*Service.java` (Núcleo de regras de negócio, transações e orquestração)
-     - `*Repository.java` (Interface pura de persistência e I/O no banco)
      - `*Api.java` (Facade pública para consumo síncrono por outros módulos)
+     - `*Repository.java` (Interface pura de persistência e I/O no banco, em módulos de repositório único)
+   - **No subpacote `repository/` (`com.ecommerce.<modulo>.repository`):** Isolamento estrito de persistência e queries (`*Repository.java`, `*SearchRepository.java`), agrupando repositórios e despoluindo a raiz do módulo.
    - **No subpacote `entity/` (`com.ecommerce.<modulo>.entity`):** Isolamento estrito de persistência: documentos `@Document`, subdocumentos de banco de dados e enums de estado interno do módulo.
    - **No subpacote `dto/` (`com.ecommerce.<modulo>.dto`):** Centralização de todos os records de transferência de dados (`*Request.java`, `*Response.java`, snapshots e agrupamentos), anotado com `@NamedInterface("dto")`.
    - **No subpacote `validation/` (`com.ecommerce.<modulo>.validation`):** Validadores especializados de regras e integridade de domínio desacoplados do serviço.
@@ -86,11 +87,13 @@ ecommerce-catalog/
     │   │   │       ├── CategoryView.java
     │   │   │       └── AttributeDefinition.java
     │   │   │
-    │   │   ├── product/                     # Feature: Produtos e Ciclo de Vida (US-02, US-04)
-    │   │   │   ├── ProductController.java    # Controller na raiz do módulo
+    │   │   ├── product/                     # Feature: Produtos, Ciclo de Vida e Busca Facetada (US-02, US-03, US-04)
+    │   │   │   ├── ProductController.java    # Controller na raiz do módulo (CRUD e busca facetada)
     │   │   │   ├── ProductService.java       # Service na raiz do módulo
-    │   │   │   ├── ProductRepository.java    # Repository na raiz do módulo
     │   │   │   ├── ProductApi.java           # Facade pública para outros módulos
+    │   │   │   ├── repository/               # Camada isolada de persistência e queries
+    │   │   │   │   ├── ProductRepository.java       # MongoRepository de produtos
+    │   │   │   │   └── ProductSearchRepository.java # Aggregation Pipeline com $match e $facet
     │   │   │   ├── entity/                   # Persistência isolada
     │   │   │   │   ├── ProductDocument.java  # Mapeamento @Document("products") (Attribute Pattern)
     │   │   │   │   ├── AttributeValue.java   # Subdocumento BSON (k, v, unit)
@@ -105,27 +108,24 @@ ecommerce-catalog/
     │   │   │       ├── CreateProductRequest.java
     │   │   │       ├── UpdateProductRequest.java
     │   │   │       ├── ProductResponse.java
-    │   │   │       └── ProductSnapshot.java
+    │   │   │       ├── ProductSnapshot.java
+    │   │   │       ├── SearchFilterRequest.java
+    │   │   │       ├── SearchSort.java
+    │   │   │       ├── SearchFacetResponse.java
+    │   │   │       ├── FacetOption.java
+    │   │   │       ├── PriceRangeFacet.java
+    │   │   │       ├── ProductSearchItemResponse.java
+    │   │   │       └── ProductSearchResult.java
     │   │   │
-    │   │   ├── outbox/                      # Feature: Transactional Outbox e Consistência Assíncrona
-    │   │   │   ├── OutboxApi.java           # Facade pública para publicação atômica de eventos (publish)
-    │   │   │   ├── OutboxService.java       # Service na raiz do módulo
-    │   │   │   ├── OutboxRepository.java    # Repository na raiz do módulo
-    │   │   │   ├── entity/                  # Persistência isolada
-    │   │   │   │   ├── OutboxDocument.java  # Mapeamento @Document("outbox_events")
-    │   │   │   │   └── OutboxStatus.java    # Enum de ciclo de vida (PENDING, PROCESSING, COMPLETED, FAILED)
-    │   │   │   └── jobs/                    # Processadores em background
-    │   │   │       └── OutboxProcessor.java # Worker agendado com @Scheduled e retries
-    │   │   │
-    │   │   └── search/                      # Feature: Motor de Busca Facetada (US-03)
-    │   │       ├── SearchController.java     # Controller na raiz do módulo
-    │   │       ├── SearchService.java        # Service de busca na raiz do módulo
-    │   │       ├── ProductSearchRepository.java # Aggregation Pipeline com $match e $facet
-    │   │       ├── SearchApi.java            # Facade pública de busca
-    │   │       └── dto/                      # DTOs de query e agregação encapsulados
-    │   │           ├── SearchQuery.java
-    │   │           ├── SearchResult.java
-    │   │           └── FacetGroup.java
+    │   │   └── outbox/                      # Feature: Transactional Outbox e Consistência Assíncrona
+    │   │       ├── OutboxApi.java           # Facade pública para publicação atômica de eventos (publish)
+    │   │       ├── OutboxService.java       # Service na raiz do módulo
+    │   │       ├── OutboxRepository.java    # Repository na raiz do módulo
+    │   │       ├── entity/                  # Persistência isolada
+    │   │       │   ├── OutboxDocument.java  # Mapeamento @Document("outbox_events")
+    │   │       │   └── OutboxStatus.java    # Enum de ciclo de vida (PENDING, PROCESSING, COMPLETED, FAILED)
+    │   │       └── jobs/                    # Processadores em background
+    │   │           └── OutboxProcessor.java # Worker agendado com @Scheduled e retries
     │   │
     │   └── resources/
     │       ├── application.yml              # Configurações gerais e fail-fast
@@ -147,12 +147,12 @@ ecommerce-catalog/
         │   └── CategoryCacheIT.java
         ├── product/                         # Testes da feature de Product
         │   ├── ProductServiceIT.java
-        │   ├── AttributeValidatorTest.java
-        │   └── ProductCacheIT.java
+        │   ├── ProductConcurrencyIT.java
+        │   ├── ProductImageUploadIT.java
+        │   ├── ProductSearchIT.java
+        │   └── AttributeValidatorTest.java
         ├── outbox/                          # Testes da feature de Outbox
         │   └── jobs/                        # OutboxProcessorTest.java
-        ├── search/                          # Testes da feature de Search
-        │   └── ProductSearchRepositoryIT.java
         └── support/                         # Suporte compartilhado (MongoDB e Redis Testcontainers)
             ├── AbstractIntegrationTest.java
             └── TestContainersConfig.java
@@ -220,6 +220,7 @@ flowchart TD
 ### 3.4. Repositories (`*Repository.java` e `*SearchRepository.java`)
 - **Papel:** Camada pura de I/O de dados com o MongoDB.
 - **Responsabilidades:**
+  - Residir no subpacote `repository/` do módulo (ex: `com.ecommerce.product.repository.ProductRepository` e `ProductSearchRepository`) ou na raiz em módulos com repositório único (ex: `CategoryRepository`).
   - Herdar de `MongoRepository<T, ID>` para operações CRUD convencionais.
   - Utilizar `MongoTemplate` de forma limpa para montagem de pipelines de agregação complexos (`$match`, `$facet`, `$unwind`, `$bucket`).
   - Executar consultas cobertas por índices sem carregar dados desnecessários na memória.
@@ -272,9 +273,8 @@ Para garantir a regra de ouro de fronteiras de dados (*Collection per Module*):
 | :--- | :--- | :--- | :--- |
 | `auth` | — *(stateless)* | — | Emissão de tokens JWT para ambiente de desenvolvimento (`/api/v1/auth/dev-token`). |
 | `category` | `categories` | `cache:category-tree` | Estrutura hierárquica, slugs e catálogo de definições de atributos. |
-| `product` | `products` | `cache:product:{idOrSlug}` | Cadastro de produtos, ciclo de vida, Attribute Pattern e locking otimista. |
+| `product` | `products` | `cache:product:{idOrSlug}` | Cadastro de produtos, ciclo de vida, Attribute Pattern, locking otimista e motor de busca facetada via `ProductSearchRepository`. |
 | `outbox` | `outbox_events` | — | Registro e consumo transacional de eventos assíncronos (ex: deleção e compensação de storage). |
-| `search` | *(somente leitura via Aggregation)* | — | Motor de busca facetada, paginação por cursor e projeções de busca. |
 | Spring Modulith | `event_publication` | — | Registro transacional de outbox para garantia de entrega de eventos. |
 
 ---

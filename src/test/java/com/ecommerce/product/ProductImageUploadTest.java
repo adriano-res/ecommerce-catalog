@@ -20,6 +20,8 @@ import com.ecommerce.product.dto.ProductResponse;
 import com.ecommerce.product.entity.ProductDocument;
 import com.ecommerce.product.entity.ProductImage;
 import com.ecommerce.product.entity.ProductStatus;
+import com.ecommerce.product.repository.ProductRepository;
+import com.ecommerce.product.repository.ProductSearchRepository;
 import com.ecommerce.product.validation.AttributeValidator;
 import com.ecommerce.product.validation.ImageValidator;
 import com.ecommerce.shared.audit.AuditMetadata;
@@ -41,6 +43,7 @@ import org.springframework.mock.web.MockMultipartFile;
 class ProductImageUploadTest {
 
   private ProductRepository productRepository;
+  private ProductSearchRepository productSearchRepository;
   private CategoryService categoryService;
   private AttributeValidator attributeValidator;
   private AuditorAware<String> auditorAware;
@@ -53,6 +56,7 @@ class ProductImageUploadTest {
   @BeforeEach
   void setUp() {
     productRepository = mock(ProductRepository.class);
+    productSearchRepository = mock(ProductSearchRepository.class);
     categoryService = mock(CategoryService.class);
     attributeValidator = mock(AttributeValidator.class);
     auditorAware = mock(AuditorAware.class);
@@ -75,6 +79,7 @@ class ProductImageUploadTest {
     productService =
         new ProductService(
             productRepository,
+            productSearchRepository,
             categoryService,
             attributeValidator,
             auditorAware,

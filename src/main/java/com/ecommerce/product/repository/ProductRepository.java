@@ -1,4 +1,4 @@
-package com.ecommerce.product;
+package com.ecommerce.product.repository;
 
 import com.ecommerce.product.entity.ProductDocument;
 import com.ecommerce.product.entity.ProductStatus;

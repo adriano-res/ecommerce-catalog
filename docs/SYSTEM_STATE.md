@@ -11,11 +11,13 @@
   - `002`: Autenticação e Segurança Stateless via JWT (`/api/v1/auth/dev-token`, `JwtAuthenticationFilter`, RBAC `ADMIN`/`USER`).
   - `003`: Taxonomia e Categorias Hierárquicas (`com.ecommerce.category`, *Ancestors Path*, cache-aside no Redis, `@NamedInterface("dto")`).
   - `004`: Cadastro e Ciclo de Vida de Produtos com Attribute Pattern (`com.ecommerce.product`, DRAFT/ACTIVE/ARCHIVED, `@Version` ETag/If-Match, Mongock `V002`, `AttributeValidator`, `ProductApi`).
+  - `005`: Busca de Produtos com Filtros Dinâmicos e Paginação por Cursor (`ProductSearchRepository`, MongoDB `$match` e `$facet` em viagem única, cursor Base64URL determinístico, subpacote `repository`).
   - `008`: Armazenamento de Imagens com SeaweedFS via S3 API e Transactional Outbox (`shared.storage`, `com.ecommerce.outbox`, `ProductImage` com `id`, eliminação de Dual-Write e endpoints REST).
 - **Card Atual em Andamento (`doing/`)**:
-  - Nenhum no momento. (Próximo: `005-rf05-rf06-busca-produtos-filtros-dinamicos-e-cursor.md`).
+  - Nenhum no momento. (Próximo: `006-rf07-rf08-cache-aside-redis-e-invalidacao-reativa.md`).
+- **Card em Revisão (`review/`)**:
+  - Nenhum no momento.
 - **Cards Planejados no Pipeline (`prototype/`)**:
-  - `005`: Busca Facetada com Aggregation Pipeline e Paginação por Cursor.
   - `006`: Cache-Aside no Redis para Produtos e Invalidação Reativa via Domain Events.
   - `007`: Observabilidade, Auditoria Centralizada e Validação de Fronteiras Modulith.
 
@@ -27,7 +29,7 @@
 | :--- | :--- | :--- |
 | **`auth`** (`com.ecommerce.auth`) | Emissão de tokens JWT dev (stateless) | `DevTokenController`, `DevTokenRequest`, `DevTokenResponse` |
 | **`category`** (`com.ecommerce.category`) | Gestão de taxonomia hierárquica e herança de atributos | `CategoryController`, `CategoryService`, `CategoryRepository`, `entity/` (`CategoryDocument`), `mapper/` (`CategoryMapper`), `dto/` (`@NamedInterface`) |
-| **`product`** (`com.ecommerce.product`) | Cadastro e ciclo de vida de produtos (DRAFT, ACTIVE, ARCHIVED) com Attribute Pattern | `ProductController`, `ProductService`, `ProductRepository`, `ProductApi`, `entity/` (`ProductDocument`, `AttributeValue`, `ProductImage`, `ProductStatus`), `validation/` (`AttributeValidator`, `ImageValidator`), `mapper/` (`ProductMapper`), `dto/` (`@NamedInterface`) |
+| **`product`** (`com.ecommerce.product`) | Cadastro, ciclo de vida de produtos (DRAFT, ACTIVE, ARCHIVED) e motor de busca facetada | `ProductController`, `ProductService`, `ProductApi`, `repository/` (`ProductRepository`, `ProductSearchRepository`), `entity/` (`ProductDocument`, `AttributeValue`, `ProductImage`, `ProductStatus`), `validation/` (`AttributeValidator`, `ImageValidator`), `mapper/` (`ProductMapper`), `dto/` (`@NamedInterface`) |
 | **`outbox`** (`com.ecommerce.outbox`) | Transactional outbox e processamento assíncrono com tolerância a falhas | `OutboxApi`, `OutboxService`, `OutboxRepository`, `entity/` (`OutboxDocument`, `OutboxStatus`), `jobs/` (`OutboxProcessor`) |
 | **`shared`** (`com.ecommerce.shared`) | Kernel transversal reutilizado entre módulos | `money`, `error`, `audit`, `pagination`, `security`, `config`, `cache`, `storage`, `enums`, `db.migrations` |
 
@@ -77,4 +79,5 @@
 - **[Card 004] Attribute Pattern & Validação Estrita**: Produtos armazenam atributos dinâmicos em array heterogêneo `{ k, v, unit }` indexado com multikey, validados estritamente contra as regras da taxonomia (`CategoryService.getEffectiveAttributes`).
 - **[Card 004] Concorrência Otimista com If-Match**: Endpoints de mutação (`PATCH`) exigem cabeçalho `If-Match` alinhado à anotação `@Version` do Spring Data Mongo; inconsistências geram `409 CONCURRENT_MODIFICATION`.
 - **[Card 004] Centralização de Segurança e Utilitários de Slug**: Extração de `SecurityUtils` e `SlugUtils` para o kernel compartilhado (`com.ecommerce.shared`), evitando acoplamento de `SecurityContextHolder` e duplicação de normalização de slugs nos controllers e services.
+- **[Card 005] Agregação em Viagem Única e Subpacote `repository`**: Execução de busca facetada via MongoDB Aggregation Pipeline com `$match` e `$facet` em viagem única (`ProductSearchRepository`), combinando resultados paginados, contagem total e facetas dinâmicas. Isolamento de `ProductRepository` e `ProductSearchRepository` no subpacote `com.ecommerce.product.repository` para manter a raiz do módulo focada exclusivamente na API pública, controller e service.
 - **[Card 008] Eliminação de Dual-Write com Transactional Outbox**: Substituição da chamada síncrona de deleção ao storage S3 em `ProductService.removeImage` por gravação atômica transacional no MongoDB (`ProductDocument` + `OutboxDocument`). O processamento físico da deleção no S3 é delegado ao `OutboxProcessor` assíncrono com tolerância a falhas e política de 5 retries. O método `addImage` opera sem `@Transactional` para evitar retenção de conexões durante upload de rede, contando com a atomicidade nativa de documento único do MongoDB e compensação com fallback para o outbox.

@@ -21,6 +21,7 @@ import com.ecommerce.category.entity.CategoryDocument;
 import com.ecommerce.product.entity.ProductDocument;
 import com.ecommerce.product.entity.ProductImage;
 import com.ecommerce.product.entity.ProductStatus;
+import com.ecommerce.product.repository.ProductRepository;
 import com.ecommerce.shared.audit.AuditMetadata;
 import com.ecommerce.shared.enums.UserRole;
 import com.ecommerce.shared.money.Money;

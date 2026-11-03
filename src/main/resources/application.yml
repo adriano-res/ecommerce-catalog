@@ -29,6 +29,7 @@ mongock:
   migration-scan-package:
     - com.ecommerce.shared.db.migrations
   enabled: true
+  transaction-enabled: false
 
 management:
   endpoints:

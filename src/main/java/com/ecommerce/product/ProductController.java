@@ -2,15 +2,24 @@ package com.ecommerce.product;
 
 import com.ecommerce.product.dto.CreateProductRequest;
 import com.ecommerce.product.dto.ProductResponse;
+import com.ecommerce.product.dto.ProductSearchResult;
+import com.ecommerce.product.dto.SearchFilterRequest;
+import com.ecommerce.product.dto.SearchSort;
 import com.ecommerce.product.dto.UpdateProductRequest;
 import com.ecommerce.shared.error.DomainException;
 import com.ecommerce.shared.error.FailureCode;
 import com.ecommerce.shared.security.SecurityUtils;
 import jakarta.validation.Valid;
+import java.math.BigDecimal;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -86,6 +95,79 @@ public class ProductController {
       @PathVariable("imageId") String imageId) {
     ProductResponse response = productService.removeImage(id, imageId);
     return ResponseEntity.ok().eTag("\"" + response.version() + "\"").body(response);
+  }
+
+  @GetMapping("/search")
+  public ResponseEntity<ProductSearchResult> search(
+      @RequestParam MultiValueMap<String, String> allParams) {
+    String q = allParams.getFirst("q");
+    String category = allParams.getFirst("category");
+    String cursor = allParams.getFirst("cursor");
+    String limitParam = allParams.getFirst("limit");
+    String sortParam = allParams.getFirst("sort");
+    String priceMinParam = allParams.getFirst("priceMin");
+    String priceMaxParam = allParams.getFirst("priceMax");
+
+    Integer limit = null;
+    if (limitParam != null && !limitParam.isBlank()) {
+      try {
+        limit = Integer.parseInt(limitParam.trim());
+      } catch (NumberFormatException ignored) {
+      }
+    }
+
+    BigDecimal priceMin = null;
+    if (priceMinParam != null && !priceMinParam.isBlank()) {
+      try {
+        priceMin = new BigDecimal(priceMinParam.trim());
+      } catch (NumberFormatException ignored) {
+      }
+    }
+
+    BigDecimal priceMax = null;
+    if (priceMaxParam != null && !priceMaxParam.isBlank()) {
+      try {
+        priceMax = new BigDecimal(priceMaxParam.trim());
+      } catch (NumberFormatException ignored) {
+      }
+    }
+
+    SearchSort sort = SearchSort.fromString(sortParam);
+
+    Map<String, List<String>> attributes = new LinkedHashMap<>();
+    for (Map.Entry<String, List<String>> entry : allParams.entrySet()) {
+      String key = entry.getKey();
+      if (key != null && key.startsWith("attr.")) {
+        String attrKey = key.substring("attr.".length());
+        List<String> values = new ArrayList<>();
+        for (String rawVal : entry.getValue()) {
+          if (rawVal != null) {
+            for (String part : rawVal.split(",")) {
+              if (!part.isBlank()) {
+                values.add(part.trim());
+              }
+            }
+          }
+        }
+        if (!values.isEmpty()) {
+          attributes.put(attrKey, values);
+        }
+      }
+    }
+
+    SearchFilterRequest request =
+        new SearchFilterRequest(
+            (q != null && !q.isBlank()) ? q.trim() : null,
+            (category != null && !category.isBlank()) ? category.trim() : null,
+            attributes,
+            priceMin,
+            priceMax,
+            sort,
+            (cursor != null && !cursor.isBlank()) ? cursor.trim() : null,
+            limit);
+
+    ProductSearchResult result = productService.search(request);
+    return ResponseEntity.ok(result);
   }
 
   @GetMapping("/{idOrSlug}")
