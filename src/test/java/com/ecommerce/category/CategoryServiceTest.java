@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.ecommerce.category.dto.AttributeDefinition;
 import com.ecommerce.category.dto.CategoryResponse;
 import com.ecommerce.category.dto.CreateCategoryRequest;
+import com.ecommerce.category.entity.CategoryDocument;
 import com.ecommerce.shared.cache.CacheService;
 import com.ecommerce.shared.error.DomainException;
 import com.ecommerce.shared.error.FailureCode;

@@ -12,13 +12,20 @@
 O **E-commerce Catalog & Faceted Search Engine** é construído como um **Monolito Modular em Java 21** com **Spring Boot 3.5+** e **Spring Modulith**. Este documento funciona como um **guia normativo de arquitetura**, orientando onde posicionar novos arquivos e componentes criados no projeto.
 
 ### Princípios Norteadores de Organização de Código
-1. **Convenção de Pacote por Feature (`com.ecommerce.<modulo>`):** O código é organizado por módulos funcionais de primeiro nível (`auth`, `category`, `product`, `search`).
-   - **Na raiz do pacote do módulo:** Vivem os componentes operacionais essenciais: `*Controller.java`, `*Service.java`, `*Repository.java`, `*Document.java`, `*Mapper.java`, `*Cache.java` e facades públicas.
-   - **No subpacote `dto/` (`com.ecommerce.<modulo>.dto`):** Ficam centralizados todos os records de transferência de dados de entrada e saída (`*Request.java`, `*Response.java`, queries e agrupamentos).
+1. **Convenção de Pacote por Feature (`com.ecommerce.<modulo>`):** O código é organizado por módulos funcionais de primeiro nível (`auth`, `category`, `product`, `search`) mantendo a raiz do pacote limpa e focada na espinha dorsal operacional:
+   - **Na raiz do pacote do módulo:** Vivem unicamente a tríade operacional essencial e a facade pública:
+     - `*Controller.java` (Entrada e adaptação de transporte HTTP REST)
+     - `*Service.java` (Núcleo de regras de negócio, transações e orquestração)
+     - `*Repository.java` (Interface pura de persistência e I/O no banco)
+     - `*Api.java` (Facade pública para consumo síncrono por outros módulos)
+   - **No subpacote `entity/` (`com.ecommerce.<modulo>.entity`):** Isolamento estrito de persistência: documentos `@Document`, subdocumentos de banco de dados e enums de estado interno do módulo.
+   - **No subpacote `dto/` (`com.ecommerce.<modulo>.dto`):** Centralização de todos os records de transferência de dados (`*Request.java`, `*Response.java`, snapshots e agrupamentos), anotado com `@NamedInterface("dto")`.
+   - **No subpacote `validation/` (`com.ecommerce.<modulo>.validation`):** Validadores especializados de regras e integridade de domínio desacoplados do serviço.
+   - **No subpacote `mapper/` (`com.ecommerce.<modulo>.mapper`):** Funções puras utilitárias de conversão DTO <-> Document.
 2. **Centralização Transversal no `shared` (`com.ecommerce.shared`):** Qualquer componente, enum, modelo, configuração ou infraestrutura que seja utilizado por mais de um módulo deve residir obrigatoriamente sob o pacote `com.ecommerce.shared` (ex: `shared.enums`, `shared.security`, `shared.error`, `shared.audit`, `shared.money`, `shared.pagination`, `shared.config`, `shared.db.migrations`).
 3. **Propriedade Exclusiva de Dados (*Collection per Module*):** Cada coleção do MongoDB e namespace de chave do Redis pertence exclusivamente a um único módulo. Nenhum módulo executa queries, mutações ou leituras diretas em coleções de outro módulo.
 4. **Simetria e Uniformidade Arquitetural (POLA — Principle of Least Astonishment):** Todos os módulos seguem a mesma convenção em camadas (`Controller` → `Service` → `Repository`), com nomes previsíveis para DTOs, mappers e documentos.
-5. **Isolamento de I/O e Inversão de Controle:** Repositórios realizam I/O puro no MongoDB; serviços orquestram regras e fronteiras de transação; comunicação síncrona entre módulos usa facades públicas (`*Api`) e comunicação assíncrona usa eventos de domínio (`*Changed`).
+5. **Isolamento de I/O e Inversão de Controle:** Repositórios realizam I/O puro no MongoDB; serviços orquestram regras e fronteiras de transação; comunicação síncrona entre módulos usa facades públicas (`*Api`).
 6. **MongoDB como Autoridade, Redis como Acelerador Efêmero:** O Redis funciona exclusivamente como camada de cache-aside. Se o Redis falhar, a aplicação degrada suavemente para o MongoDB sem indisponibilidade ou perda de dados.
 7. **Centralização Estrita de Migrações de Banco (Mongock):** Todas as migrações DDL e criação de índices MongoDB devem residir exclusivamente em `com.ecommerce.shared.db.migrations`. Módulos de feature (`category`, `product`, `search`) são estritamente proibidos de conter classes de migração para evitar fragmentação do histórico do banco de dados.
 
@@ -49,9 +56,10 @@ ecommerce-catalog/
     │   │   │   ├── audit/                   # AuditMetadata (createdAt/By, updatedAt/By) e AuditorAware
     │   │   │   ├── pagination/              # CursorPage, CursorEncoder e decodificador Base64URL
     │   │   │   ├── enums/                   # Enums transversais compartilhados (ex: UserRole)
-    │   │   │   ├── security/                # Infraestrutura Spring Security (SecurityConfig, JwtService, JwtAuthenticationFilter)
+    │   │   │   ├── security/                # Infraestrutura Spring Security (SecurityConfig, JwtService, JwtAuthenticationFilter, SecurityUtils)
     │   │   │   ├── config/                  # MongoConfig, RedisConfig, JacksonConfig, WebMvcConfig (prefixo global /api/v1)
     │   │   │   ├── cache/                   # CacheService resiliente (get, put com TTL, evict)
+    │   │   │   ├── util/                    # Utilitários transversais (ex: SlugUtils)
     │   │   │   └── db/                      # Infraestrutura de banco e migrações versionadas
     │   │   │       └── migrations/          # ChangeUnits sequenciais do Mongock (V001_..., V002_...)
     │   │   │
@@ -65,25 +73,32 @@ ecommerce-catalog/
     │   │   │   ├── CategoryController.java   # Controller na raiz do módulo
     │   │   │   ├── CategoryService.java      # Service na raiz do módulo (regras de negócio, cache e consultas)
     │   │   │   ├── CategoryRepository.java   # Repository na raiz do módulo
-    │   │   │   ├── CategoryDocument.java     # Mapeamento @Document("categories") com audit
-    │   │   │   ├── CategoryMapper.java       # Funções puras de conversão DTO <-> Document
-    │   │   │   └── dto/                      # DTOs de request/response encapsulados
+    │   │   │   ├── entity/                   # Persistência isolada
+    │   │   │   │   └── CategoryDocument.java # Mapeamento @Document("categories") com audit
+    │   │   │   ├── mapper/                   # Conversores puros
+    │   │   │   │   └── CategoryMapper.java   # Conversão DTO <-> Document
+    │   │   │   └── dto/                      # DTOs de request/response encapsulados (@NamedInterface)
     │   │   │       ├── CreateCategoryRequest.java
     │   │   │       ├── CategoryResponse.java
     │   │   │       ├── CategoryTreeResponse.java
+    │   │   │       ├── CategoryView.java
     │   │   │       └── AttributeDefinition.java
     │   │   │
     │   │   ├── product/                     # Feature: Produtos e Ciclo de Vida (US-02, US-04)
     │   │   │   ├── ProductController.java    # Controller na raiz do módulo
     │   │   │   ├── ProductService.java       # Service na raiz do módulo
     │   │   │   ├── ProductRepository.java    # Repository na raiz do módulo
-    │   │   │   ├── ProductDocument.java      # Mapeamento @Document("products") (Attribute Pattern)
-    │   │   │   ├── ProductMapper.java        # Mapeamento DTO <-> Document
-    │   │   │   ├── ProductEventListener.java # Listener para evicção reativa de cache via CacheService
-    │   │   │   ├── AttributeValidator.java   # Validador de tipos/enums contra CategoryService
     │   │   │   ├── ProductApi.java           # Facade pública para outros módulos
-    │   │   │   ├── ProductChanged.java       # Evento de domínio público
-    │   │   │   └── dto/                      # DTOs de request/response encapsulados
+    │   │   │   ├── entity/                   # Persistência isolada
+    │   │   │   │   ├── ProductDocument.java  # Mapeamento @Document("products") (Attribute Pattern)
+    │   │   │   │   ├── AttributeValue.java   # Subdocumento BSON (k, v, unit)
+    │   │   │   │   ├── ProductImage.java     # Subdocumento de imagem
+    │   │   │   │   └── ProductStatus.java    # Enum de ciclo de vida (DRAFT, ACTIVE, ARCHIVED)
+    │   │   │   ├── validation/               # Regras de negócio desacopladas
+    │   │   │   │   └── AttributeValidator.java # Validador de tipos/enums contra CategoryService
+    │   │   │   ├── mapper/                   # Conversores puros
+    │   │   │   │   └── ProductMapper.java    # Mapeamento DTO <-> Document
+    │   │   │   └── dto/                      # DTOs de request/response encapsulados (@NamedInterface)
     │   │   │       ├── CreateProductRequest.java
     │   │   │       ├── UpdateProductRequest.java
     │   │   │       ├── ProductResponse.java
@@ -196,12 +211,18 @@ flowchart TD
 - **Proibições:**
   - Nenhuma regra de negócio ou validação taxonômica deve ser executada dentro do repositório.
 
-### 3.5. Documents e Mappers (`*Document.java` e `*Mapper.java`)
-- **`*Document.java`:**
+### 3.5. Entidades de Persistência, Validadores e Mappers
+- **`entity/*Document.java`:**
+  - Reside exclusivamente no subpacote `entity/` do módulo, mantendo a raiz despoluída.
   - Representa o esquema persistido no MongoDB anotado com `@Document("colecao")`.
+  - Subdocumentos (ex: `AttributeValue`, `ProductImage`) e enums de estado interno residem dentro de `entity/`.
   - Contém anotações de auditoria (`@CreatedDate`, `@LastModifiedDate`, etc.) e `@Version` para locking otimista.
-- **`*Mapper.java`:**
-  - Classe utilitária com métodos estáticos puros (ou MapStruct) que convertem DTOs em Documents e vice-versa.
+- **`validation/*Validator.java`:**
+  - Reside no subpacote `validation/` do módulo.
+  - Componente `@Component` com validações especializadas de regras e integridade de domínio, evitando inflar o Service.
+- **`mapper/*Mapper.java`:**
+  - Reside no subpacote `mapper/` do módulo.
+  - Classe utilitária com métodos estáticos puros que convertem DTOs em Documents e vice-versa.
   - Não possui dependências com banco de dados ou contexto Spring.
 
 ### 3.6. Caches e Listeners (`*Cache.java` e `*EventListener.java`)

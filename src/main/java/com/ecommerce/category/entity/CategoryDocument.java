@@ -1,4 +1,4 @@
-package com.ecommerce.category;
+package com.ecommerce.category.entity;
 
 import com.ecommerce.category.dto.AttributeDefinition;
 import com.ecommerce.shared.audit.AuditMetadata;

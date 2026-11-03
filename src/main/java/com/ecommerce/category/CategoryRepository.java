@@ -1,5 +1,6 @@
 package com.ecommerce.category;
 
+import com.ecommerce.category.entity.CategoryDocument;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.mongodb.repository.MongoRepository;

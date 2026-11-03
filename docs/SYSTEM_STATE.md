@@ -9,8 +9,9 @@
 - **Cards Concluídos (`done/`)**:
   - `001`: Setup Inicial do Projeto (Spring Boot 3.5, Java 21, Mongo replica set, Redis, Modulith e Shared Kernel).
   - `002`: Autenticação e Segurança Stateless via JWT (`/api/v1/auth/dev-token`, `JwtAuthenticationFilter`, RBAC `ADMIN`/`USER`).
+  - `003`: Taxonomia e Categorias Hierárquicas (`com.ecommerce.category`, *Ancestors Path*, cache-aside no Redis, `@NamedInterface("dto")`).
 - **Card Atual em Andamento (`doing/`)**:
-  - `003`: Taxonomia e Categorias Hierárquicas (`com.ecommerce.category`, *Ancestors Path*, cache-aside no Redis).
+  - Nenhum no momento. (Próximo: `004-rf03-rf04-produtos-attribute-pattern-e-ciclo-vida.md`).
 - **Cards Planejados no Pipeline (`prototype/`)**:
   - `004`: Produtos com Attribute Pattern e Ciclo de Vida (`DRAFT`, `ACTIVE`, `ARCHIVED`).
   - `005`: Busca Facetada com Aggregation Pipeline e Paginação por Cursor.
@@ -24,7 +25,8 @@
 | Módulo / Pacote | Papel Principal | Componentes Chave |
 | :--- | :--- | :--- |
 | **`auth`** (`com.ecommerce.auth`) | Emissão de tokens JWT dev (stateless) | `DevTokenController`, `DevTokenRequest`, `DevTokenResponse` |
-| **`category`** (`com.ecommerce.category`) | Gestão de taxonomia hierárquica e herança de atributos | `CategoryController`, `CategoryService`, `CategoryRepository`, `CategoryDocument`, `CategoryCache` |
+| **`category`** (`com.ecommerce.category`) | Gestão de taxonomia hierárquica e herança de atributos | `CategoryController`, `CategoryService`, `CategoryRepository`, `entity/` (`CategoryDocument`), `mapper/` (`CategoryMapper`), `dto/` (`@NamedInterface`) |
+| **`product`** (`com.ecommerce.product`) | Cadastro e ciclo de vida de produtos (DRAFT, ACTIVE, ARCHIVED) com Attribute Pattern | `ProductController`, `ProductService`, `ProductRepository`, `ProductApi`, `entity/` (`ProductDocument`, `AttributeValue`, `ProductImage`, `ProductStatus`), `validation/` (`AttributeValidator`), `mapper/` (`ProductMapper`), `dto/` (`@NamedInterface`) |
 | **`shared`** (`com.ecommerce.shared`) | Kernel transversal reutilizado entre módulos | `money`, `error`, `audit`, `pagination`, `security`, `config`, `cache`, `enums`, `db.migrations` |
 
 ---
@@ -33,9 +35,13 @@
 
 ### Coleções MongoDB (`ecommerce_catalog`)
 - **`categories`** (gerenciada por `category`):
-  - Documento: `CategoryDocument` (id, slug, name, parentId, ancestors, attributeDefinitions, audit).
+  - Documento: `CategoryDocument` em `entity/` (id, slug, name, parentId, ancestors, attributeDefinitions, audit).
   - Migrações Mongock ativas:
     - `V001_CreateCategoryIndexes`: Índice único em `slug`, índices secundários em `parentId` e multikey em `ancestors`.
+- **`products`** (gerenciada por `product`):
+  - Documento: `ProductDocument` em `entity/` (id, sku, slug, name, brand, description, categoryId, categoryPath, status, price em Money, attributes em Attribute Pattern `k/v/unit`, images, version, audit).
+  - Migrações Mongock ativas:
+    - `V002_CreateProductIndexes`: Índices únicos em `sku` e `slug`, composto `{ status: 1, categoryPath: 1, "price.amountMinor": 1 }`, multikey em `{ "attributes.k": 1, "attributes.v": 1 }` e índice de texto ponderado em português.
 
 ### Namespaces de Chave no Redis
 - **`cache:category-tree`**: Serialização JSON da árvore completa de categorias (TTL: 30 min, invalidada via `CacheService` a cada mutação de taxonomia).

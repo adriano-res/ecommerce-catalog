@@ -1,9 +1,10 @@
-package com.ecommerce.category;
+package com.ecommerce.category.mapper;
 
 import com.ecommerce.category.dto.AttributeDefinition;
 import com.ecommerce.category.dto.CategoryResponse;
 import com.ecommerce.category.dto.CategoryTreeResponse;
 import com.ecommerce.category.dto.CategoryView;
+import com.ecommerce.category.entity.CategoryDocument;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;

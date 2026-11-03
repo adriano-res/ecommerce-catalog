@@ -182,10 +182,16 @@ public record Money(
       if (node == null || node.isNull()) {
         return null;
       }
+      if (!node.isObject()) {
+        throw new IllegalArgumentException(
+            "Money JSON representation must be an object containing 'amount' and 'currency'");
+      }
       JsonNode amountNode = node.get("amount");
       JsonNode currencyNode = node.get("currency");
-      if (amountNode == null || currencyNode == null) {
-        throw new IllegalArgumentException("Money JSON representation must contain 'amount' and 'currency'");
+      if (amountNode == null || amountNode.isNull() || amountNode.asText().isBlank()
+          || currencyNode == null || currencyNode.isNull() || currencyNode.asText().isBlank()) {
+        throw new IllegalArgumentException(
+            "Money JSON representation must contain 'amount' and 'currency'");
       }
       return Money.of(amountNode.asText(), currencyNode.asText());
     }

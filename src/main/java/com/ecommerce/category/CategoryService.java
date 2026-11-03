@@ -5,12 +5,14 @@ import com.ecommerce.category.dto.CategoryResponse;
 import com.ecommerce.category.dto.CategoryTreeResponse;
 import com.ecommerce.category.dto.CategoryView;
 import com.ecommerce.category.dto.CreateCategoryRequest;
+import com.ecommerce.category.entity.CategoryDocument;
+import com.ecommerce.category.mapper.CategoryMapper;
 import com.ecommerce.shared.audit.AuditMetadata;
 import com.ecommerce.shared.cache.CacheService;
 import com.ecommerce.shared.error.DomainException;
 import com.ecommerce.shared.error.FailureCode;
+import com.ecommerce.shared.util.SlugUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
-import java.text.Normalizer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -55,7 +57,7 @@ public class CategoryService {
 
   @Transactional
   public CategoryResponse createCategory(CreateCategoryRequest request) {
-    String slug = resolveSlug(request.name(), request.slug());
+    String slug = SlugUtils.resolveSlug(request.name(), request.slug());
     if (categoryRepository.existsBySlug(slug)) {
       throw new DomainException(FailureCode.DUPLICATE_SLUG, "Category with slug '" + slug + "' already exists");
     }
@@ -261,17 +263,5 @@ public class CategoryService {
     }
     Query query = new Query(Criteria.where("categoryId").is(categoryId));
     return mongoTemplate.exists(query, "products");
-  }
-
-  private String resolveSlug(String name, String customSlug) {
-    if (customSlug != null && !customSlug.isBlank()) {
-      return customSlug.trim().toLowerCase(Locale.ROOT);
-    }
-    String normalized = Normalizer.normalize(name, Normalizer.Form.NFD)
-        .replaceAll("\\p{M}", "");
-    return normalized.toLowerCase(Locale.ROOT)
-        .replaceAll("[^a-z0-9\\s-]", "")
-        .trim()
-        .replaceAll("\\s+", "-");
   }
 }

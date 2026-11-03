@@ -9,6 +9,7 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -84,6 +85,21 @@ public class ProblemDetailHandler {
         ex.getMessage(),
         request);
     log.warn("Illegal argument: {}", ex.getMessage());
+    return ResponseEntity.status(status).body(problem);
+  }
+
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ResponseEntity<ProblemDetail> handleHttpMessageNotReadable(
+      HttpMessageNotReadableException ex, HttpServletRequest request) {
+    HttpStatus status = HttpStatus.BAD_REQUEST;
+    FailureCode failureCode = FailureCode.VALIDATION_ERROR;
+    String message = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+    ProblemDetail problem = ProblemDetails.build(
+        status,
+        failureCode,
+        message,
+        request);
+    log.warn("Malformed HTTP request body: {}", message);
     return ResponseEntity.status(status).body(problem);
   }
 

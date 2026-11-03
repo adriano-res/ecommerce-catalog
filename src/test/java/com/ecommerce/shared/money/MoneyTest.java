@@ -134,4 +134,18 @@ class MoneyTest {
     assertThat(deserialized.amountMinor()).isEqualTo(19990L);
     assertThat(deserialized.currency()).isEqualTo(BRL);
   }
+
+  @Test
+  @DisplayName("Should reject deserialization when price is not a JSON object")
+  void shouldRejectDeserialization_whenPriceIsNotJsonObject() {
+    assertThatThrownBy(() -> objectMapper.readValue("8500", Money.class))
+        .hasCauseInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  @DisplayName("Should reject deserialization when currency is omitted")
+  void shouldRejectDeserialization_whenCurrencyIsOmitted() {
+    assertThatThrownBy(() -> objectMapper.readValue("{\"amount\": \"85.00\"}", Money.class))
+        .hasCauseInstanceOf(IllegalArgumentException.class);
+  }
 }
