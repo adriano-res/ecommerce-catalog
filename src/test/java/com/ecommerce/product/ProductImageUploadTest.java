@@ -6,13 +6,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import static org.mockito.ArgumentMatchers.startsWith;
 
 import com.ecommerce.category.CategoryService;
 import com.ecommerce.outbox.OutboxApi;
@@ -25,6 +24,7 @@ import com.ecommerce.product.repository.ProductSearchRepository;
 import com.ecommerce.product.validation.AttributeValidator;
 import com.ecommerce.product.validation.ImageValidator;
 import com.ecommerce.shared.audit.AuditMetadata;
+import com.ecommerce.shared.cache.CacheService;
 import com.ecommerce.shared.error.DomainException;
 import com.ecommerce.shared.error.FailureCode;
 import com.ecommerce.shared.money.Money;
@@ -51,6 +51,7 @@ class ProductImageUploadTest {
   private ImageValidator imageValidator;
   private StorageProperties storageProperties;
   private OutboxApi outboxApi;
+  private CacheService cacheService;
   private ProductService productService;
 
   @BeforeEach
@@ -62,6 +63,7 @@ class ProductImageUploadTest {
     auditorAware = mock(AuditorAware.class);
     storageService = mock(StorageService.class);
     outboxApi = mock(OutboxApi.class);
+    cacheService = mock(CacheService.class);
 
     storageProperties =
         new StorageProperties(
@@ -85,7 +87,8 @@ class ProductImageUploadTest {
             auditorAware,
             storageService,
             imageValidator,
-            outboxApi);
+            outboxApi,
+            cacheService);
   }
 
   @Test
@@ -187,6 +190,8 @@ class ProductImageUploadTest {
 
     verify(storageService).upload(anyString(), any(InputStream.class), eq(10L), eq("image/png"));
     verify(productRepository).save(product);
+    verify(cacheService).evict("cache:product:" + productId);
+    verify(cacheService).evict("cache:product:slug-" + productId);
   }
 
   @Test
@@ -230,6 +235,8 @@ class ProductImageUploadTest {
     verify(productRepository).save(product);
     verify(storageService, never()).delete(anyString());
     verify(outboxApi).publish("DELETE_STORAGE_FILE", "products/prod-300/photo-abc.webp");
+    verify(cacheService).evict("cache:product:" + productId);
+    verify(cacheService).evict("cache:product:slug-" + productId);
   }
 
   @Test

@@ -12,13 +12,13 @@
   - `003`: Taxonomia e Categorias Hierárquicas (`com.ecommerce.category`, *Ancestors Path*, cache-aside no Redis, `@NamedInterface("dto")`).
   - `004`: Cadastro e Ciclo de Vida de Produtos com Attribute Pattern (`com.ecommerce.product`, DRAFT/ACTIVE/ARCHIVED, `@Version` ETag/If-Match, Mongock `V002`, `AttributeValidator`, `ProductApi`).
   - `005`: Busca de Produtos com Filtros Dinâmicos e Paginação por Cursor (`ProductSearchRepository`, MongoDB `$match` e `$facet` em viagem única, cursor Base64URL determinístico, subpacote `repository`).
+  - `006`: Cache-Aside no Redis para Produtos e Invalidação Cirúrgica Direta (`ProductService`, `CacheService`, TTL de 10 min, dual keys `id`/`slug`, resiliência com fallback transparente para MongoDB, governança de status DRAFT/ARCHIVED).
   - `008`: Armazenamento de Imagens com SeaweedFS via S3 API e Transactional Outbox (`shared.storage`, `com.ecommerce.outbox`, `ProductImage` com `id`, eliminação de Dual-Write e endpoints REST).
 - **Card Atual em Andamento (`doing/`)**:
-  - Nenhum no momento. (Próximo: `006-rf07-rf08-cache-aside-redis-e-invalidacao-reativa.md`).
+  - Nenhum no momento.
 - **Card em Revisão (`review/`)**:
   - Nenhum no momento.
 - **Cards Planejados no Pipeline (`prototype/`)**:
-  - `006`: Cache-Aside no Redis para Produtos e Invalidação Reativa via Domain Events.
   - `007`: Observabilidade, Auditoria Centralizada e Validação de Fronteiras Modulith.
 
 ---
@@ -29,7 +29,7 @@
 | :--- | :--- | :--- |
 | **`auth`** (`com.ecommerce.auth`) | Emissão de tokens JWT dev (stateless) | `DevTokenController`, `DevTokenRequest`, `DevTokenResponse` |
 | **`category`** (`com.ecommerce.category`) | Gestão de taxonomia hierárquica e herança de atributos | `CategoryController`, `CategoryService`, `CategoryRepository`, `entity/` (`CategoryDocument`), `mapper/` (`CategoryMapper`), `dto/` (`@NamedInterface`) |
-| **`product`** (`com.ecommerce.product`) | Cadastro, ciclo de vida de produtos (DRAFT, ACTIVE, ARCHIVED) e motor de busca facetada | `ProductController`, `ProductService`, `ProductApi`, `repository/` (`ProductRepository`, `ProductSearchRepository`), `entity/` (`ProductDocument`, `AttributeValue`, `ProductImage`, `ProductStatus`), `validation/` (`AttributeValidator`, `ImageValidator`), `mapper/` (`ProductMapper`), `dto/` (`@NamedInterface`) |
+| **`product`** (`com.ecommerce.product`) | Cadastro, ciclo de vida de produtos (DRAFT, ACTIVE, ARCHIVED), busca facetada e cache-aside direto | `ProductController`, `ProductService`, `ProductApi`, `repository/` (`ProductRepository`, `ProductSearchRepository`), `entity/` (`ProductDocument`, `AttributeValue`, `ProductImage`, `ProductStatus`), `validation/` (`AttributeValidator`, `ImageValidator`), `mapper/` (`ProductMapper`), `dto/` (`@NamedInterface`) |
 | **`outbox`** (`com.ecommerce.outbox`) | Transactional outbox e processamento assíncrono com tolerância a falhas | `OutboxApi`, `OutboxService`, `OutboxRepository`, `entity/` (`OutboxDocument`, `OutboxStatus`), `jobs/` (`OutboxProcessor`) |
 | **`shared`** (`com.ecommerce.shared`) | Kernel transversal reutilizado entre módulos | `money`, `error`, `audit`, `pagination`, `security`, `config`, `cache`, `storage`, `enums`, `db.migrations` |
 
@@ -52,6 +52,7 @@
     - `V003_CreateOutboxIndexes`: Índice composto `{ status: 1, createdAt: 1 }`.
 
 ### Namespaces de Chave no Redis
+- **`cache:product:{idOrSlug}`**: Serialização JSON de `ProductResponse` (TTL: 10 min, gravado simultaneamente por ID e slug para produtos ACTIVE, invalidado diretamente via `CacheService` a cada mutação).
 - **`cache:category-tree`**: Serialização JSON da árvore completa de categorias (TTL: 30 min, invalidada via `CacheService` a cada mutação de taxonomia).
 
 ---

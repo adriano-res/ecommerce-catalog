@@ -89,7 +89,7 @@ ecommerce-catalog/
     │   │   │
     │   │   ├── product/                     # Feature: Produtos, Ciclo de Vida e Busca Facetada (US-02, US-03, US-04)
     │   │   │   ├── ProductController.java    # Controller na raiz do módulo (CRUD e busca facetada)
-    │   │   │   ├── ProductService.java       # Service na raiz do módulo
+    │   │   │   ├── ProductService.java       # Service na raiz do módulo (regras de negócio, cache-aside direto e orquestração)
     │   │   │   ├── ProductApi.java           # Facade pública para outros módulos
     │   │   │   ├── repository/               # Camada isolada de persistência e queries
     │   │   │   │   ├── ProductRepository.java       # MongoRepository de produtos
@@ -241,14 +241,12 @@ flowchart TD
   - Classe utilitária com métodos estáticos puros que convertem DTOs em Documents e vice-versa.
   - Não possui dependências com banco de dados ou contexto Spring.
 
-### 3.6. Caches e Listeners (`*Cache.java` e `*EventListener.java`)
-- **`*Cache.java`:**
-  - Componente que encapsula o acesso ao Redis via `RedisTemplate<String, byte[]>` ou Lettuce.
-  - Implementa padrão Cache-Aside com tratamento fail-safe (captura timeout/erros e faz fallback para MongoDB).
-  - Impõe TTL obrigatório em todas as gravações.
-- **`*EventListener.java`:**
-  - Anotado com `@ApplicationModuleListener` para execução assíncrona desacoplada após o commit da transação.
-  - Executa a invalidação pontual de chaves no Redis em resposta a eventos de mutação.
+### 3.6. Caches e Resiliência (`CacheService`)
+- **Padrão Cache-Aside Direto:**
+  - Serviços de negócio injetam diretamente `CacheService` (`com.ecommerce.shared.cache.CacheService`), eliminando camadas intermediárias artificiais e indireção de eventos quando a invalidação síncrona for preferida.
+  - O `CacheService` encapsula o acesso resiliente ao Redis (`StringRedisTemplate`), implementando tratamento fail-safe com logs de `WARN` e fallback transparente para o MongoDB.
+  - Impõe TTL obrigatório em todas as gravações (ex: 10 min para detalhes de produtos, 30 min para árvore de categorias).
+  - Invalidação pontual e cirúrgica executada diretamente no momento de cada mutação com sucesso.
 
 ### 3.7. Workers em Background e Processadores Agendados (`jobs/*Processor.java` e `jobs/*Worker.java`)
 - **Papel:** Execução assíncrona desacoplada da camada HTTP síncrona.

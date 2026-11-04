@@ -3,6 +3,7 @@ package com.ecommerce.product;
 import com.ecommerce.category.CategoryService;
 import com.ecommerce.category.dto.AttributeDefinition;
 import com.ecommerce.category.dto.CategoryView;
+import com.ecommerce.outbox.OutboxApi;
 import com.ecommerce.product.dto.CreateProductRequest;
 import com.ecommerce.product.dto.ProductResponse;
 import com.ecommerce.product.dto.ProductSearchResult;
@@ -18,13 +19,14 @@ import com.ecommerce.product.repository.ProductRepository;
 import com.ecommerce.product.repository.ProductSearchRepository;
 import com.ecommerce.product.validation.AttributeValidator;
 import com.ecommerce.product.validation.ImageValidator;
-import com.ecommerce.outbox.OutboxApi;
 import com.ecommerce.shared.audit.AuditMetadata;
+import com.ecommerce.shared.cache.CacheService;
 import com.ecommerce.shared.error.DomainException;
 import com.ecommerce.shared.error.FailureCode;
 import com.ecommerce.shared.storage.StorageService;
 import com.ecommerce.shared.util.SlugUtils;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +46,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class ProductService implements ProductApi {
 
   private static final Logger log = LoggerFactory.getLogger(ProductService.class);
+  private static final Duration PRODUCT_CACHE_TTL = Duration.ofMinutes(10);
+  private static final String CACHE_KEY_PREFIX = "cache:product:";
 
   private final ProductRepository productRepository;
   private final ProductSearchRepository productSearchRepository;
@@ -53,6 +57,7 @@ public class ProductService implements ProductApi {
   private final StorageService storageService;
   private final ImageValidator imageValidator;
   private final OutboxApi outboxApi;
+  private final CacheService cacheService;
 
   public ProductService(
       ProductRepository productRepository,
@@ -62,7 +67,8 @@ public class ProductService implements ProductApi {
       AuditorAware<String> auditorAware,
       StorageService storageService,
       ImageValidator imageValidator,
-      OutboxApi outboxApi) {
+      OutboxApi outboxApi,
+      CacheService cacheService) {
     this.productRepository = productRepository;
     this.productSearchRepository = productSearchRepository;
     this.categoryService = categoryService;
@@ -71,6 +77,7 @@ public class ProductService implements ProductApi {
     this.storageService = storageService;
     this.imageValidator = imageValidator;
     this.outboxApi = outboxApi;
+    this.cacheService = cacheService;
   }
 
   @Transactional
@@ -197,6 +204,7 @@ public class ProductService implements ProductApi {
         saved.getSku(),
         saved.getVersion());
 
+    evictProductCache(saved.getId(), saved.getSlug());
     return ProductMapper.toResponse(saved);
   }
 
@@ -219,6 +227,7 @@ public class ProductService implements ProductApi {
     ProductDocument saved = productRepository.save(doc);
     log.info("Published product id={}, sku={}", saved.getId(), saved.getSku());
 
+    evictProductCache(saved.getId(), saved.getSlug());
     return ProductMapper.toResponse(saved);
   }
 
@@ -241,33 +250,55 @@ public class ProductService implements ProductApi {
     ProductDocument saved = productRepository.save(doc);
     log.info("Archived product id={}, sku={}", saved.getId(), saved.getSku());
 
+    evictProductCache(saved.getId(), saved.getSlug());
     return ProductMapper.toResponse(saved);
   }
 
   public ProductResponse getByIdOrSlug(String idOrSlug, boolean publicOnly) {
-    ProductDocument doc = productRepository
-        .findById(idOrSlug)
-        .or(() -> productRepository.findBySlug(idOrSlug))
-        .orElseThrow(
-            () -> new DomainException(
-                FailureCode.PRODUCT_NOT_FOUND, "Product not found: " + idOrSlug));
+    if (publicOnly) {
+      Optional<ProductResponse> cached = cacheService.get(productCacheKey(idOrSlug), ProductResponse.class);
+      if (cached.isPresent()) {
+        return cached.get();
+      }
 
-    if (publicOnly && doc.getStatus() != ProductStatus.ACTIVE) {
-      throw new DomainException(
-          FailureCode.PRODUCT_NOT_FOUND, "Product not found: " + idOrSlug);
+      ProductDocument doc = findProductByIdOrSlug(idOrSlug, true);
+      ProductResponse response = ProductMapper.toResponse(doc);
+      cacheService.put(productCacheKey(doc.getId()), response, PRODUCT_CACHE_TTL);
+      cacheService.put(productCacheKey(doc.getSlug()), response, PRODUCT_CACHE_TTL);
+      return response;
     }
 
+    ProductDocument doc = findProductByIdOrSlug(idOrSlug, false);
     return ProductMapper.toResponse(doc);
   }
 
+  private ProductDocument findProductByIdOrSlug(String idOrSlug, boolean publicOnly) {
+    if (idOrSlug == null || idOrSlug.isBlank()) {
+      throw new DomainException(
+          FailureCode.PRODUCT_NOT_FOUND, "Product not found: " + idOrSlug);
+    }
+    String clean = idOrSlug.trim();
+    ProductDocument doc = productRepository
+        .findById(clean)
+        .or(() -> productRepository.findBySlug(clean))
+        .orElseThrow(
+            () -> new DomainException(
+                FailureCode.PRODUCT_NOT_FOUND, "Product not found: " + clean));
+
+    if (publicOnly && doc.getStatus() != ProductStatus.ACTIVE) {
+      throw new DomainException(
+          FailureCode.PRODUCT_NOT_FOUND, "Product not found: " + clean);
+    }
+
+    return doc;
+  }
+
   public ProductResponse addImage(String productId, MultipartFile file, String alt) {
-    ProductDocument product =
-        productRepository
-            .findById(productId)
-            .orElseThrow(
-                () ->
-                    new DomainException(
-                        FailureCode.PRODUCT_NOT_FOUND, "Product not found: " + productId));
+    ProductDocument product = productRepository
+        .findById(productId)
+        .orElseThrow(
+            () -> new DomainException(
+                FailureCode.PRODUCT_NOT_FOUND, "Product not found: " + productId));
 
     String imageId = UUID.randomUUID().toString();
     String extension = imageValidator.validateAndExtractExtension(file);
@@ -275,9 +306,8 @@ public class ProductService implements ProductApi {
 
     String publicUrl;
     try {
-      publicUrl =
-          storageService.upload(
-              imageKey, file.getInputStream(), file.getSize(), file.getContentType());
+      publicUrl = storageService.upload(
+          imageKey, file.getInputStream(), file.getSize(), file.getContentType());
     } catch (IOException e) {
       throw new DomainException(
           FailureCode.INTERNAL_ERROR, "Failed to read image content for upload: " + e.getMessage());
@@ -286,8 +316,8 @@ public class ProductService implements ProductApi {
     String altText = (alt != null && !alt.isBlank()) ? alt.trim() : product.getName();
     ProductImage newImage = new ProductImage(imageId, publicUrl, altText);
 
-    List<ProductImage> currentImages =
-        product.getImages() != null ? new ArrayList<>(product.getImages()) : new ArrayList<>();
+    List<ProductImage> currentImages = product.getImages() != null ? new ArrayList<>(product.getImages())
+        : new ArrayList<>();
     currentImages.add(newImage);
     product.setImages(currentImages);
 
@@ -298,10 +328,9 @@ public class ProductService implements ProductApi {
       product.setAudit(AuditMetadata.create(actor));
     }
 
+    ProductDocument saved;
     try {
-      ProductDocument saved = productRepository.save(product);
-      log.info("Added image to product id={}, url={}", productId, publicUrl);
-      return ProductMapper.toResponse(saved);
+      saved = productRepository.save(product);
     } catch (Exception ex) {
       try {
         storageService.delete(imageKey);
@@ -314,17 +343,19 @@ public class ProductService implements ProductApi {
       }
       throw ex;
     }
+
+    log.info("Added image to product id={}, url={}", productId, publicUrl);
+    evictProductCache(saved.getId(), saved.getSlug());
+    return ProductMapper.toResponse(saved);
   }
 
   @Transactional
   public ProductResponse removeImage(String productId, String imageIdOrTarget) {
-    ProductDocument product =
-        productRepository
-            .findById(productId)
-            .orElseThrow(
-                () ->
-                    new DomainException(
-                        FailureCode.PRODUCT_NOT_FOUND, "Product not found: " + productId));
+    ProductDocument product = productRepository
+        .findById(productId)
+        .orElseThrow(
+            () -> new DomainException(
+                FailureCode.PRODUCT_NOT_FOUND, "Product not found: " + productId));
 
     if (imageIdOrTarget == null || imageIdOrTarget.isBlank()) {
       throw new DomainException(
@@ -332,22 +363,19 @@ public class ProductService implements ProductApi {
     }
 
     String cleanTarget = imageIdOrTarget.trim();
-    List<ProductImage> currentImages =
-        product.getImages() != null ? new ArrayList<>(product.getImages()) : new ArrayList<>();
+    List<ProductImage> currentImages = product.getImages() != null ? new ArrayList<>(product.getImages())
+        : new ArrayList<>();
 
-    ProductImage matchedImage =
-        currentImages.stream()
-            .filter(
-                img ->
-                    (img.id() != null && img.id().equals(cleanTarget))
-                        || (img.url() != null
-                            && (img.url().equals(cleanTarget) || img.url().contains(cleanTarget))))
-            .findFirst()
-            .orElseThrow(
-                () ->
-                    new DomainException(
-                        FailureCode.RESOURCE_NOT_FOUND,
-                        "Image not found for product: " + imageIdOrTarget));
+    ProductImage matchedImage = currentImages.stream()
+        .filter(
+            img -> (img.id() != null && img.id().equals(cleanTarget))
+                || (img.url() != null
+                    && (img.url().equals(cleanTarget) || img.url().contains(cleanTarget))))
+        .findFirst()
+        .orElseThrow(
+            () -> new DomainException(
+                FailureCode.RESOURCE_NOT_FOUND,
+                "Image not found for product: " + imageIdOrTarget));
 
     currentImages.remove(matchedImage);
     product.setImages(currentImages);
@@ -368,6 +396,8 @@ public class ProductService implements ProductApi {
         "Removed image from product id={}, key={} published for outbox deletion",
         productId,
         resolvedKey);
+
+    evictProductCache(saved.getId(), saved.getSlug());
     return ProductMapper.toResponse(saved);
   }
 
@@ -379,6 +409,19 @@ public class ProductService implements ProductApi {
       return url.substring(url.indexOf("products/"));
     }
     return target;
+  }
+
+  private String productCacheKey(String idOrSlug) {
+    return CACHE_KEY_PREFIX + (idOrSlug != null ? idOrSlug.trim() : "");
+  }
+
+  private void evictProductCache(String id, String slug) {
+    if (id != null && !id.isBlank()) {
+      cacheService.evict(productCacheKey(id));
+    }
+    if (slug != null && !slug.isBlank()) {
+      cacheService.evict(productCacheKey(slug));
+    }
   }
 
   @Override
