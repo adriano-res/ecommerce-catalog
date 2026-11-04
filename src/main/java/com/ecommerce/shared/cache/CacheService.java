@@ -2,6 +2,7 @@ package com.ecommerce.shared.cache;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -16,19 +17,27 @@ public class CacheService {
 
   private final StringRedisTemplate redisTemplate;
   private final ObjectMapper objectMapper;
+  private final MeterRegistry meterRegistry;
 
-  public CacheService(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
+  public CacheService(
+      StringRedisTemplate redisTemplate,
+      ObjectMapper objectMapper,
+      MeterRegistry meterRegistry) {
     this.redisTemplate = redisTemplate;
     this.objectMapper = objectMapper;
+    this.meterRegistry = meterRegistry;
   }
 
   public <T> Optional<T> get(String key, Class<T> targetClass) {
     try {
       String json = redisTemplate.opsForValue().get(key);
       if (json != null && !json.isBlank()) {
+        recordHit(key);
         return Optional.ofNullable(objectMapper.readValue(json, targetClass));
       }
+      recordMiss(key);
     } catch (Exception e) {
+      recordError(key);
       log.warn("Failed to retrieve cache for key '{}': {}. Proceeding with fallback.", key, e.getMessage());
     }
     return Optional.empty();
@@ -38,9 +47,12 @@ public class CacheService {
     try {
       String json = redisTemplate.opsForValue().get(key);
       if (json != null && !json.isBlank()) {
+        recordHit(key);
         return Optional.ofNullable(objectMapper.readValue(json, typeReference));
       }
+      recordMiss(key);
     } catch (Exception e) {
+      recordError(key);
       log.warn("Failed to retrieve cache for key '{}': {}. Proceeding with fallback.", key, e.getMessage());
     }
     return Optional.empty();
@@ -55,6 +67,7 @@ public class CacheService {
         redisTemplate.opsForValue().set(key, json);
       }
     } catch (Exception e) {
+      recordError(key);
       log.warn("Failed to put cache for key '{}': {}. Proceeding without cache.", key, e.getMessage());
     }
   }
@@ -64,7 +77,33 @@ public class CacheService {
       redisTemplate.delete(key);
       log.info("Evicted cache key: {}", key);
     } catch (Exception e) {
+      recordError(key);
       log.warn("Failed to evict cache for key '{}': {}", key, e.getMessage());
     }
+  }
+
+  private void recordHit(String key) {
+    meterRegistry.counter("catalog.cache.hits", "cache", resolveCacheName(key)).increment();
+  }
+
+  private void recordMiss(String key) {
+    meterRegistry.counter("catalog.cache.misses", "cache", resolveCacheName(key)).increment();
+  }
+
+  private void recordError(String key) {
+    meterRegistry.counter("catalog.cache.errors", "cache", resolveCacheName(key)).increment();
+  }
+
+  private String resolveCacheName(String key) {
+    if (key == null) {
+      return "default";
+    }
+    if (key.contains("product")) {
+      return "product";
+    }
+    if (key.contains("category")) {
+      return "category";
+    }
+    return "default";
   }
 }

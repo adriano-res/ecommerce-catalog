@@ -11,6 +11,8 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +28,7 @@ class CacheServiceTest {
   private StringRedisTemplate redisTemplate;
   private ValueOperations<String, String> valueOperations;
   private ObjectMapper objectMapper;
+  private MeterRegistry meterRegistry;
   private CacheService cacheService;
 
   @BeforeEach
@@ -34,10 +37,11 @@ class CacheServiceTest {
     redisTemplate = mock(StringRedisTemplate.class);
     valueOperations = mock(ValueOperations.class);
     objectMapper = mock(ObjectMapper.class);
+    meterRegistry = new SimpleMeterRegistry();
 
     when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
-    cacheService = new CacheService(redisTemplate, objectMapper);
+    cacheService = new CacheService(redisTemplate, objectMapper, meterRegistry);
   }
 
   @Test
@@ -52,26 +56,29 @@ class CacheServiceTest {
     Optional<TestDto> result = cacheService.get("test:key", TestDto.class);
 
     assertThat(result).contains(expected);
+    assertThat(meterRegistry.get("catalog.cache.hits").tag("cache", "default").counter().count()).isEqualTo(1.0);
   }
 
   @Test
   @DisplayName("Should return empty optional when cache key does not exist")
   void shouldReturnEmptyOptional_whenCacheKeyDoesNotExist() {
-    when(valueOperations.get("test:miss")).thenReturn(null);
+    when(valueOperations.get("cache:product:miss")).thenReturn(null);
 
-    Optional<TestDto> result = cacheService.get("test:miss", TestDto.class);
+    Optional<TestDto> result = cacheService.get("cache:product:miss", TestDto.class);
 
     assertThat(result).isEmpty();
+    assertThat(meterRegistry.get("catalog.cache.misses").tag("cache", "product").counter().count()).isEqualTo(1.0);
   }
 
   @Test
-  @DisplayName("Should return empty optional and not throw exception when redis connection fails on get")
+  @DisplayName("Should return empty optional and record error when redis connection fails on get")
   void shouldReturnEmptyOptional_whenRedisFailsOnGet() {
     when(valueOperations.get(anyString())).thenThrow(new RedisConnectionFailureException("Redis down"));
 
-    Optional<TestDto> result = cacheService.get("test:fail", TestDto.class);
+    Optional<TestDto> result = cacheService.get("cache:category:fail", TestDto.class);
 
     assertThat(result).isEmpty();
+    assertThat(meterRegistry.get("catalog.cache.errors").tag("cache", "category").counter().count()).isEqualTo(1.0);
   }
 
   @Test
@@ -80,14 +87,15 @@ class CacheServiceTest {
     String json = "[{\"id\":\"1\",\"name\":\"A\"}]";
     List<TestDto> expectedList = List.of(new TestDto("1", "A"));
 
-    when(valueOperations.get("test:list")).thenReturn(json);
+    when(valueOperations.get("cache:product:list")).thenReturn(json);
     when(objectMapper.readValue(eq(json), any(TypeReference.class))).thenReturn(expectedList);
 
-    Optional<List<TestDto>> result = cacheService.get("test:list", new TypeReference<List<TestDto>>() {});
+    Optional<List<TestDto>> result = cacheService.get("cache:product:list", new TypeReference<List<TestDto>>() {});
 
     assertThat(result).isPresent();
     assertThat(result.get()).hasSize(1);
     assertThat(result.get().get(0).name()).isEqualTo("A");
+    assertThat(meterRegistry.get("catalog.cache.hits").tag("cache", "product").counter().count()).isEqualTo(1.0);
   }
 
   @Test
@@ -109,8 +117,9 @@ class CacheServiceTest {
     doThrow(new RedisConnectionFailureException("Redis down"))
         .when(valueOperations).set(anyString(), anyString(), any(Duration.class));
 
-    // Should not throw
-    cacheService.put("test:key", dto, Duration.ofMinutes(10));
+    cacheService.put("cache:product:key", dto, Duration.ofMinutes(10));
+
+    assertThat(meterRegistry.get("catalog.cache.errors").tag("cache", "product").counter().count()).isEqualTo(1.0);
   }
 
   @Test
@@ -127,8 +136,9 @@ class CacheServiceTest {
     doThrow(new RedisConnectionFailureException("Redis down"))
         .when(redisTemplate).delete(anyString());
 
-    // Should not throw
-    cacheService.evict("test:key");
+    cacheService.evict("cache:category:key");
+
+    assertThat(meterRegistry.get("catalog.cache.errors").tag("cache", "category").counter().count()).isEqualTo(1.0);
   }
 
   private record TestDto(String id, String name) {}

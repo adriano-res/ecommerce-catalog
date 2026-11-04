@@ -2,6 +2,7 @@ package com.ecommerce.shared.security;
 
 import com.ecommerce.shared.error.FailureCode;
 import com.ecommerce.shared.error.ProblemDetails;
+import com.ecommerce.shared.web.CorrelationIdFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -20,6 +21,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -36,6 +38,7 @@ public class SecurityConfig {
 
   @Bean
   public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    CorrelationIdFilter correlationIdFilter = new CorrelationIdFilter();
     JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtService);
 
     return http
@@ -60,6 +63,7 @@ public class SecurityConfig {
         .exceptionHandling(exceptions -> exceptions
             .authenticationEntryPoint(authenticationEntryPoint())
             .accessDeniedHandler(accessDeniedHandler()))
+        .addFilterBefore(correlationIdFilter, SecurityContextHolderFilter.class)
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
         .build();
   }

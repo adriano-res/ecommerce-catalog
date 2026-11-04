@@ -33,12 +33,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       HttpServletRequest request,
       HttpServletResponse response,
       FilterChain filterChain) throws ServletException, IOException {
-    String correlationId = request.getHeader(CORRELATION_ID_HEADER);
-    if (correlationId == null || correlationId.isBlank()) {
-      correlationId = UUID.randomUUID().toString();
+    String existingCorrelationId = MDC.get(MDC_CORRELATION_ID_KEY);
+    boolean correlationIdSetLocally = false;
+    if (existingCorrelationId == null || existingCorrelationId.isBlank()) {
+      String correlationId = request.getHeader(CORRELATION_ID_HEADER);
+      if (correlationId == null || correlationId.isBlank()) {
+        correlationId = UUID.randomUUID().toString();
+      }
+      MDC.put(MDC_CORRELATION_ID_KEY, correlationId);
+      response.setHeader(CORRELATION_ID_HEADER, correlationId);
+      correlationIdSetLocally = true;
     }
-    MDC.put(MDC_CORRELATION_ID_KEY, correlationId);
-    response.setHeader(CORRELATION_ID_HEADER, correlationId);
 
     boolean actorSet = false;
 
@@ -65,7 +70,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       if (actorSet) {
         MDC.remove(MDC_ACTOR_KEY);
       }
-      MDC.remove(MDC_CORRELATION_ID_KEY);
+      if (correlationIdSetLocally) {
+        MDC.remove(MDC_CORRELATION_ID_KEY);
+      }
     }
   }
 }

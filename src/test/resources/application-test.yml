@@ -13,6 +13,30 @@ spring:
 mongock:
   enabled: false
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,modulith
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,mongo,redisReadiness
+      status:
+        http-mapping:
+          DEGRADED: 200
+    prometheus:
+      enabled: true
+  health:
+    redis:
+      enabled: false
+
 logging:
   level:
     root: INFO

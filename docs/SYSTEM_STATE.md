@@ -13,13 +13,14 @@
   - `004`: Cadastro e Ciclo de Vida de Produtos com Attribute Pattern (`com.ecommerce.product`, DRAFT/ACTIVE/ARCHIVED, `@Version` ETag/If-Match, Mongock `V002`, `AttributeValidator`, `ProductApi`).
   - `005`: Busca de Produtos com Filtros Dinâmicos e Paginação por Cursor (`ProductSearchRepository`, MongoDB `$match` e `$facet` em viagem única, cursor Base64URL determinístico, subpacote `repository`).
   - `006`: Cache-Aside no Redis para Produtos e Invalidação Cirúrgica Direta (`ProductService`, `CacheService`, TTL de 10 min, dual keys `id`/`slug`, resiliência com fallback transparente para MongoDB, governança de status DRAFT/ARCHIVED).
+  - `007`: Observabilidade, Auditoria Centralizada, Telemetria OpenTelemetry, Logs Legíveis e Stack Grafana/Loki (`CorrelationIdFilter`, `RedisReadinessHealthIndicator` DEGRADED, Micrometer, subpacote `metrics/`, LGTM stack).
   - `008`: Armazenamento de Imagens com SeaweedFS via S3 API e Transactional Outbox (`shared.storage`, `com.ecommerce.outbox`, `ProductImage` com `id`, eliminação de Dual-Write e endpoints REST).
 - **Card Atual em Andamento (`doing/`)**:
   - Nenhum no momento.
 - **Card em Revisão (`review/`)**:
   - Nenhum no momento.
 - **Cards Planejados no Pipeline (`prototype/`)**:
-  - `007`: Observabilidade, Auditoria Centralizada e Validação de Fronteiras Modulith.
+  - Nenhum no momento.
 
 ---
 
@@ -29,9 +30,9 @@
 | :--- | :--- | :--- |
 | **`auth`** (`com.ecommerce.auth`) | Emissão de tokens JWT dev (stateless) | `DevTokenController`, `DevTokenRequest`, `DevTokenResponse` |
 | **`category`** (`com.ecommerce.category`) | Gestão de taxonomia hierárquica e herança de atributos | `CategoryController`, `CategoryService`, `CategoryRepository`, `entity/` (`CategoryDocument`), `mapper/` (`CategoryMapper`), `dto/` (`@NamedInterface`) |
-| **`product`** (`com.ecommerce.product`) | Cadastro, ciclo de vida de produtos (DRAFT, ACTIVE, ARCHIVED), busca facetada e cache-aside direto | `ProductController`, `ProductService`, `ProductApi`, `repository/` (`ProductRepository`, `ProductSearchRepository`), `entity/` (`ProductDocument`, `AttributeValue`, `ProductImage`, `ProductStatus`), `validation/` (`AttributeValidator`, `ImageValidator`), `mapper/` (`ProductMapper`), `dto/` (`@NamedInterface`) |
+| **`product`** (`com.ecommerce.product`) | Cadastro, ciclo de vida de produtos (DRAFT, ACTIVE, ARCHIVED), busca facetada, cache-aside direto e métricas | `ProductController`, `ProductService`, `ProductApi`, `repository/` (`ProductRepository`, `ProductSearchRepository`), `entity/` (`ProductDocument`, `AttributeValue`, `ProductImage`, `ProductStatus`), `metrics/` (`ProductMetrics`), `validation/` (`AttributeValidator`, `ImageValidator`), `mapper/` (`ProductMapper`), `dto/` (`@NamedInterface`) |
 | **`outbox`** (`com.ecommerce.outbox`) | Transactional outbox e processamento assíncrono com tolerância a falhas | `OutboxApi`, `OutboxService`, `OutboxRepository`, `entity/` (`OutboxDocument`, `OutboxStatus`), `jobs/` (`OutboxProcessor`) |
-| **`shared`** (`com.ecommerce.shared`) | Kernel transversal reutilizado entre módulos | `money`, `error`, `audit`, `pagination`, `security`, `config`, `cache`, `storage`, `enums`, `db.migrations` |
+| **`shared`** (`com.ecommerce.shared`) | Kernel transversal reutilizado entre módulos | `money`, `error`, `audit`, `pagination`, `security`, `config`, `cache`, `storage`, `web`, `enums`, `db.migrations` |
 
 ---
 

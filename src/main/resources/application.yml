@@ -41,11 +41,27 @@ management:
       show-details: always
       probes:
         enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,mongo,redisReadiness
+      status:
+        http-mapping:
+          DEGRADED: 200
     prometheus:
       enabled: true
+  health:
+    redis:
+      enabled: false
   metrics:
     tags:
       application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: w3c
 
 app:
   datasource:

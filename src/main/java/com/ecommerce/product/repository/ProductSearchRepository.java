@@ -9,6 +9,8 @@ import com.ecommerce.product.dto.SearchFilterRequest;
 import com.ecommerce.product.dto.SearchSort;
 import com.ecommerce.product.entity.ProductDocument;
 import com.ecommerce.shared.pagination.CursorEncoder;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,9 +37,13 @@ public class ProductSearchRepository {
   private static final String COLLECTION_NAME = "products";
 
   private final MongoTemplate mongoTemplate;
+  private final Timer searchTimer;
 
-  public ProductSearchRepository(MongoTemplate mongoTemplate) {
+  public ProductSearchRepository(MongoTemplate mongoTemplate, MeterRegistry meterRegistry) {
     this.mongoTemplate = mongoTemplate;
+    this.searchTimer = Timer.builder("catalog.search.duration")
+        .description("Duration of faceted product search aggregation pipeline")
+        .register(meterRegistry);
   }
 
   /**
@@ -159,9 +165,10 @@ public class ProductSearchRepository {
     AggregationOperation facetOp = ctx -> facetStage;
 
     Aggregation aggregation = Aggregation.newAggregation(matchOp, facetOp);
-    AggregationResults<Document> aggregationResults = mongoTemplate.aggregate(aggregation, COLLECTION_NAME,
-        Document.class);
-    Document facetDoc = aggregationResults.getUniqueMappedResult();
+    AggregationResults<Document> aggregationResults = searchTimer.record(() ->
+        mongoTemplate.aggregate(aggregation, COLLECTION_NAME, Document.class)
+    );
+    Document facetDoc = (aggregationResults != null) ? aggregationResults.getUniqueMappedResult() : null;
 
     if (facetDoc == null) {
       return ProductSearchResult.empty();

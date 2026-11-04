@@ -2,23 +2,26 @@
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-    <springProfile name="!local">
-        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%X{correlationId:-none}]){magenta} %clr([%X{traceId:-none},%X{spanId:-none}]){yellow} %clr([%X{actor:-anonymous}]){blue} %clr([%thread]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx</pattern>
+        </encoder>
+    </appender>
+
+    <springProfile name="json-logs">
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
-                <pattern>{"timestamp":"%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX}","level":"%level","thread":"%thread","logger":"%logger{36}","correlationId":"%X{correlationId:-none}","actor":"%X{actor:-anonymous}","message":"%msg"}%n</pattern>
+                <pattern>{"timestamp":"%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX}","level":"%level","thread":"%thread","logger":"%logger{36}","correlationId":"%X{correlationId:-none}","traceId":"%X{traceId:-none}","spanId":"%X{spanId:-none}","actor":"%X{actor:-anonymous}","message":"%msg"}%n</pattern>
             </encoder>
         </appender>
+        <root level="INFO">
+            <appender-ref ref="JSON_CONSOLE"/>
+        </root>
     </springProfile>
 
-    <springProfile name="local">
-        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-            <encoder>
-                <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%X{correlationId:-none}]){magenta} %clr([%thread]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx</pattern>
-            </encoder>
-        </appender>
+    <springProfile name="!json-logs">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
     </springProfile>
-
-    <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-    </root>
 </configuration>

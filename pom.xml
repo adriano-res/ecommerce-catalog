@@ -146,6 +146,16 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- OpenTelemetry Tracing -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+
         <!-- AWS SDK v2 S3 (SeaweedFS / Object Storage) -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>

@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.time.Duration;
+import org.springframework.boot.actuate.health.SimpleStatusAggregator;
+import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.actuate.health.StatusAggregator;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,6 +23,16 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 @Configuration
 @EnableCaching
 public class RedisConfig {
+
+  @Bean
+  public StatusAggregator statusAggregator() {
+    return new SimpleStatusAggregator(
+        Status.DOWN,
+        Status.OUT_OF_SERVICE,
+        new Status("DEGRADED"),
+        Status.UP,
+        Status.UNKNOWN);
+  }
 
   @Bean
   public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {

@@ -104,6 +104,8 @@ ecommerce-catalog/
     │   │   │   │   └── ImageValidator.java   # Validador de payloads e formatos de imagem
     │   │   │   ├── mapper/                   # Conversores puros
     │   │   │   │   └── ProductMapper.java    # Mapeamento DTO <-> Document
+    │   │   │   ├── metrics/                  # Instrumentação Micrometer isolada
+    │   │   │   │   └── ProductMetrics.java   # Gauges dinâmicos de catálogo (ACTIVE, DRAFT, ARCHIVED)
     │   │   │   └── dto/                      # DTOs de request/response encapsulados (@NamedInterface)
     │   │   │       ├── CreateProductRequest.java
     │   │   │       ├── UpdateProductRequest.java
@@ -323,3 +325,15 @@ Para garantir integridade de esquema em produção e cumprir a regra **RNF-04** 
 - **Proibição de Migrações em Features:** Nenhuma classe `@ChangeUnit` pode ser criada dentro dos pacotes de módulos de negócio (`category`, `product`, `search`, etc.). Isso evita fragmentação do histórico e mantém a ordem cronológica em um ponto único de auditoria.
 - **Convenção de Nomenclatura:** `V{NNN}_{DescricaoEmCamelCase}.java` (ex: `V001_CreateCategoryIndexes.java`, `V002_CreateProductIndexes.java`).
 - **Configuração do Mongock:** A propriedade `mongock.migration-scan-package` no `application.yml` aponta unicamente para `com.ecommerce.shared.db.migrations`.
+
+---
+
+### 4.6. Observabilidade, Telemetria OpenTelemetry e Visualização Grafana
+- **Três Pilares da Observabilidade:**
+  - **Métricas (Micrometer + Prometheus):** Expostas em `/actuator/prometheus` e coletadas pelo container `catalog-prometheus`.
+  - **Traces (OpenTelemetry):** `micrometer-tracing-bridge-otel` implementa o padrão W3C TraceContext, propagando `traceId` e `spanId` automaticamente para o MDC e headers.
+  - **Logs (Logback + Loki):** Console exibe por padrão logs coloridos legíveis para humanos. Coletados pelo `catalog-promtail` e indexados no `catalog-loki`.
+- **Visualização Unificada no Grafana (`:3000`):**
+  - Datasources pré-configurados para Prometheus e Loki.
+  - Dashboard provisionado com métricas de catálogo, latência P95 e logs da aplicação.
+
