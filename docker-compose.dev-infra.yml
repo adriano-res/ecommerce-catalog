@@ -1,0 +1,90 @@
+# ==============================================================================
+# Development Infrastructure Compose (dev-infra)
+# ==============================================================================
+# Usage:
+#   docker compose -f docker-compose.dev-infra.yml up -d
+#   docker compose -f docker-compose.dev-infra.yml down
+#
+# Spins up only the supporting backing services required to run and test
+# the Spring Boot application locally on the host machine.
+# ==============================================================================
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: catalog-dev-mongodb
+    restart: unless-stopped
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: catalog
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - dev_mongodb_data:/data/db
+
+  mongodb-init:
+    image: mongo:7.0
+    container_name: catalog-dev-mongodb-init
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: "no"
+    command: >
+      mongosh --host mongodb:27017 --eval '
+        try {
+          const status = rs.status();
+          const currentHost = status.members && status.members[0] ? status.members[0].name : "";
+          if (currentHost !== "localhost:27017") {
+            console.log("Reconfiguring replica set host to localhost:27017 for local development...");
+            const cfg = rs.conf();
+            cfg.members[0].host = "localhost:27017";
+            rs.reconfig(cfg, { force: true });
+            console.log("Replica set reconfigured successfully.");
+          } else {
+            console.log("Replica set already initialized with localhost:27017.");
+          }
+        } catch (e) {
+          console.log("Initializing replica set rs0 with localhost:27017...");
+          rs.initiate({
+            _id: "rs0",
+            members: [{ _id: 0, host: "localhost:27017" }]
+          });
+          console.log("Replica set rs0 initialized.");
+        }
+      '
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: catalog-dev-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - dev_redis_data:/data
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: catalog-dev-seaweedfs
+    restart: unless-stopped
+    command: "server -s3 -dir=/data -s3.port=8333"
+    ports:
+      - "8333:8333"
+      - "9333:9333"
+    volumes:
+      - dev_seaweedfs_data:/data
+
+volumes:
+  dev_mongodb_data:
+  dev_redis_data:
+  dev_seaweedfs_data:

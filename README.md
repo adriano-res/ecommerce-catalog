@@ -15,18 +15,38 @@ A separação e o isolamento entre módulos são auditados e validados por teste
 
 ---
 
-## 2. Pré-requisitos e Execução de Infraestrutura Local
+## 2. Pré-requisitos e Execução de Infraestrutura
 
 - **Java 21 LTS**
 - **Docker e Docker Compose**
 
-Para subir o MongoDB (replica set `rs0`) e o Redis 7 localmente:
+### 2.1. Ambiente de Desenvolvimento Local (dev-infra)
+Para subir **apenas os serviços de suporte** necessários para testar e rodar a aplicação localmente pelo host (MongoDB com replica set `rs0`, Redis 7 e SeaweedFS S3):
 
 ```bash
-docker compose up -d
+docker compose -f docker-compose.dev-infra.yml up -d
 ```
 
-O MongoDB estará disponível na porta `27017` e o Redis na porta `6379`.
+- **MongoDB:** `localhost:27017`
+- **Redis:** `localhost:6379`
+- **SeaweedFS S3:** `http://localhost:8333` (Master/UI: `9333`)
+
+Para parar a infraestrutura de desenvolvimento:
+```bash
+docker compose -f docker-compose.dev-infra.yml down
+```
+
+### 2.2. Ambiente de Produção Completo (app + infra + observabilidade)
+Para construir a imagem containerizada da aplicação via `Dockerfile` (multi-stage com extração de camadas) e subir todo o ecossistema integrado:
+
+```bash
+docker compose up -d --build
+```
+
+- **Ecommerce Catalog App:** `http://localhost:8080` (Swagger UI: `http://localhost:8080/swagger-ui/index.html`)
+- **Grafana:** `http://localhost:3000` (admin/admin)
+- **Prometheus:** `http://localhost:9090`
+- **Loki:** `http://localhost:3100`
 
 ---
 
