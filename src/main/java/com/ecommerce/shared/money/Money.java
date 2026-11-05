@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -23,6 +24,9 @@ import java.util.Objects;
  */
 @JsonSerialize(using = Money.MoneySerializer.class)
 @JsonDeserialize(using = Money.MoneyDeserializer.class)
+@Schema(
+    description = "Monetary amount representation with currency and decimal string",
+    example = "{\"amount\": \"3499.90\", \"currency\": \"BRL\"}")
 public record Money(
     long amountMinor,
     Currency currency

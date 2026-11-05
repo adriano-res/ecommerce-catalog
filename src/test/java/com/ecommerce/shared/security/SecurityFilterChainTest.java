@@ -145,4 +145,14 @@ class SecurityFilterChainTest extends AbstractIntegrationTest {
         .andExpect(jsonPath("$.username", is("test-admin")))
         .andExpect(jsonPath("$.accessToken", notNullValue()));
   }
+
+  @Test
+  @DisplayName("Should permit unauthenticated access to Swagger UI endpoints")
+  void shouldPermitAccess_whenAccessingSwaggerEndpointsWithoutAuthentication() throws Exception {
+    mockMvc.perform(get("/swagger-ui/api-docs"))
+        .andExpect(status().isOk());
+
+    mockMvc.perform(get("/swagger-ui/index.html"))
+        .andExpect(status().isOk());
+  }
 }

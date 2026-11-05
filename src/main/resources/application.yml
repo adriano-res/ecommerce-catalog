@@ -24,6 +24,7 @@ spring:
 server:
   port: ${PORT:8080}
   shutdown: graceful
+  max-http-request-header-size: 64KB
 
 mongock:
   migration-scan-package:
@@ -85,3 +86,12 @@ app:
       public-url-base: ${S3_PUBLIC_URL_BASE:}
   outbox:
     interval-ms: ${OUTBOX_INTERVAL_MS:5000}
+
+springdoc:
+  api-docs:
+    path: /swagger-ui/api-docs
+  swagger-ui:
+    path: /swagger-ui/index.html
+    url: /swagger-ui/api-docs
+    operations-sorter: method
+    tags-sorter: alpha
